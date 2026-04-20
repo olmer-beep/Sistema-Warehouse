@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Picking Pro - BetterDeals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root { --red: #ef4444; --bg: #f1f5f9; --border: #e2e8f0; --text: #1e293b; --accent: #3b82f6; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .card { background: white; max-width: 1400px; margin: auto; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--red); padding-bottom: 15px; margin-bottom: 20px; }
+        .upload-zone { border: 2px dashed #cbd5e1; padding: 20px; border-radius: 12px; text-align: center; margin-bottom: 20px; background: #fef2f2; cursor: pointer; }
+        .search-area { position: relative; margin-bottom: 20px; }
+        #search-input { width: 100%; padding: 15px; border-radius: 8px; border: 2px solid var(--red); font-size: 16px; box-sizing: border-box; }
+        #sug-box { position: absolute; background: white; width: 100%; z-index: 100; display: none; max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .s-item { padding: 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; }
+        .s-item:hover { background: #fef2f2; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
+        .btn { padding: 10px 18px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 13px; text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .btn-pdf { background: #ef4444; color: white; }
+        .btn-csv { background: #1e293b; color: white; }
+        .btn-limpiar { background: #e2e8f0; color: #475569; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #f8fafc; padding: 12px; text-align: left; font-size: 11px; color: #64748b; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+        td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        .input-qty { width: 85px; padding: 8px; border: 2px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 800; }
+        .input-mc { border-color: var(--accent) !important; color: var(--accent); }
+        .loc-input { width: 100px; padding: 8px; border: 2px solid #f59e0b; border-radius: 6px; font-weight: bold; text-align: center; text-transform: uppercase; }
+        .stock-out { background: #fee2e2; color: #991b1b; padding: 5px 10px; border-radius: 6px; font-weight: 800; }
+        .btn-confirm { background: var(--red); color: white; padding: 20px; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 25px; font-size: 16px; display: none; text-transform: uppercase;}
+        .btn-del { color: var(--red); background: none; border: none; font-weight: 800; cursor: pointer; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="header">
+        <div>
+            <a href="index.html" style="text-decoration:none; color:var(--red); font-weight:700;">⬅ VOLVER AL INVENTARIO</a>
+            <h2 style="margin:5px 0 0 0;">📋 Picklist (Salida de Mercancía)</h2>
+        </div>
+        <div style="text-align: right">
+            <div id="count-total" style="font-size: 28px; font-weight: 800; color: var(--red);">0</div>
+            <div style="font-size: 10px; color: #64748b; font-weight: 700;">ÍTEMS POR SACAR</div>
+        </div>
+    </div>
+
+    <div class="upload-zone" onclick="document.getElementById('csvFile').click()">
+        <strong>📁 Cargar CSV Picklist</strong> (Fila 4: B=Item, E=Qty, F=Loc)
+        <input type="file" id="csvFile" style="display:none" onchange="procesarCSV(this)">
+    </div>
+
+    <div class="search-area">
+        <input type="text" id="search-input" placeholder="🔍 Buscar y añadir ítems para sacar..." autocomplete="off">
+        <div id="sug-box"></div>
+    </div>
+
+    <div class="btn-group">
+        <button class="btn btn-pdf" onclick="descargarPDF()">📄 EXPORTAR PDF</button>
+        <button class="btn btn-csv" onclick="descargarCSV()">📥 EXPORTAR CSV</button>
+        <button class="btn btn-limpiar" onclick="limpiarLista()">🗑️ LIMPIAR LISTA</button>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>OK</th>
+                <th>ITEM</th>
+                <th>DESCRIPCIÓN</th>
+                <th>LOCACIÓN</th>
+                <th>STOCK ACTUAL</th>
+                <th>VALOR MC</th>
+                <th style="color:var(--red)">CAJAS (T)</th>
+                <th style="color:var(--accent)">BN#1 / CAJA ABIERTA</th>
+                <th style="color:var(--red)">CANT. A SACAR</th>
+                <th>STOCK FINAL</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="lista-body"></tbody>
+    </table>
+
+    <button id="btn-confirm-final" class="btn-confirm" onclick="confirmarSalida()">🚀 CONFIRMAR SALIDA Y RESTAR DEL EXCEL</button>
+</div>
+
+<script>
+    let itemsPicking = JSON.parse(localStorage.getItem('picking_data')) || [];
+    const sInput = document.getElementById('search-input');
+    const sugBox = document.getElementById('sug-box');
+
+    window.onload = () => renderTable();
+
+    function guardarLocal() {
+        localStorage.setItem('picking_data', JSON.stringify(itemsPicking));
+    }
+
+    function limpiarLista() {
+        if(confirm("¿Borrar toda la lista de picking?")) {
+            itemsPicking = [];
+            localStorage.removeItem('picking_data');
+            renderTable();
+        }
+    }
+
+    sInput.addEventListener('input', async () => {
+        const q = sInput.value.trim();
+        if (q.length < 2) { sugBox.style.display = 'none'; return; }
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        sugBox.innerHTML = '';
+        data.forEach(i => {
+            const div = document.createElement('div');
+            div.className = 's-item';
+            div.innerHTML = `<b>${i.ITEM}</b> - ${i.Description} <span style="float:right; color:var(--red)">Stock: ${i.STOCK}</span>`;
+            div.onclick = () => { buscarYAgregar(i.ITEM, 0, "", false); sInput.value = ''; sugBox.style.display='none'; };
+            sugBox.appendChild(div);
+        });
+        sugBox.style.display = 'block';
+    });
+
+    async function buscarYAgregar(codigo, cantidad, locSugerida, esCSV) {
+        if(itemsPicking.find(x => x.item === codigo)) return;
+        const res = await fetch(`/search?q=${encodeURIComponent(codigo)}`);
+        const data = await res.json();
+        const info = data.find(x => x.ITEM.toString().trim() === codigo.toString().trim());
+        
+        if (info) {
+            itemsPicking.push({
+                item: info.ITEM,
+                desc: info.Description,
+                loc: locSugerida || info.loc || info.location || "",
+                stockActual: parseInt(info.STOCK) || 0,
+                mc_val: parseInt(info.MC) || 0,
+                cant_a_sacar: cantidad,
+                checked: false
+            });
+            guardarLocal();
+            if(!esCSV) renderTable();
+        }
+    }
+
+    function procesarCSV(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const lineas = e.target.result.split(/\r?\n/);
+            for (let i = 3; i < lineas.length; i++) {
+                const cols = lineas[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                if (cols && cols.length >= 5) {
+                    const item = cols[1]?.replace(/"/g, '').trim();
+                    const qty = parseInt(cols[4]?.replace(/"/g, '').trim()) || 0;
+                    const loc = cols[5]?.replace(/"/g, '').trim() || "";
+                    if (item && qty > 0) await buscarYAgregar(item, qty, loc, true);
+                }
+            }
+            renderTable();
+        };
+        reader.readAsText(file);
+    }
+
+    function renderTable() {
+        const body = document.getElementById('lista-body');
+        body.innerHTML = '';
+        itemsPicking.forEach((it, idx) => {
+            const stockFinal = it.stockActual - it.cant_a_sacar;
+            
+            // LÓGICA DE CAJAS Y BN#1
+            const mc = it.mc_val || 0;
+            let cajas = 0;
+            let bn1_proyectado = stockFinal;
+
+            if (mc > 0) {
+                let llenas = Math.floor(stockFinal / mc);
+                bn1_proyectado = stockFinal % mc;
+                cajas = bn1_proyectado > 0 ? llenas + 1 : llenas;
+            }
+
+            body.innerHTML += `
+                <tr style="${it.checked ? 'background:#fef2f2':''}">
+                    <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="itemsPicking[${idx}].checked=this.checked; guardarLocal(); renderTable()"></td>
+                    <td><b>${it.item}</b></td>
+                    <td style="font-size:10px; color:#64748b;">${it.desc}</td>
+                    <td><input type="text" class="loc-input" value="${it.loc}" onchange="itemsPicking[${idx}].loc=this.value.toUpperCase(); guardarLocal()"></td>
+                    <td style="color:#64748b; font-weight:bold;">${it.stockActual}</td>
+                    <td><input type="number" class="input-qty input-mc" value="${it.mc_val}" onchange="itemsPicking[${idx}].mc_val=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
+                    <td style="text-align:center; font-weight:800; color:var(--red); font-size:16px;">${cajas}</td>
+                    <td style="text-align:center; font-weight:800; color:var(--accent); font-size:16px;">${bn1_proyectado}</td>
+                    <td><input type="number" class="input-qty" style="border-color:var(--red)" value="${it.cant_a_sacar}" onchange="itemsPicking[${idx}].cant_a_sacar=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
+                    <td><span class="stock-out">${stockFinal}</span></td>
+                    <td><button class="btn-del" onclick="itemsPicking.splice(${idx},1); guardarLocal(); renderTable()">✕</button></td>
+                </tr>`;
+        });
+        document.getElementById('count-total').innerText = itemsPicking.length;
+        document.getElementById('btn-confirm-final').style.display = itemsPicking.length > 0 ? 'block' : 'none';
+        guardarLocal();
+    }
+
+    async function confirmarSalida() {
+    if (itemsPicking.length === 0) return alert("No hay ítems en la lista de picking.");
+    
+    if (!confirm("¿Confirmar salida de mercancía? Se restará del stock del Excel.")) return;
+
+    const dataEnviar = itemsPicking.map(it => ({
+        item: it.item,
+        pick: parseInt(it.cant_a_sacar) || 0,
+        mc_val: parseInt(it.mc_val) || 0,
+        loc: it.loc || ""
+    }));
+
+    try {
+        const res = await fetch('/api/process-bulk-picking', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataEnviar)
+        });
+
+        if (res.ok) {
+            alert("✅ ¡SALIDA PROCESADA! Stock descontado con éxito.");
+            itemsPicking = [];
+            localStorage.removeItem('picking_data');
+            renderTable();
+        } else {
+            alert("❌ Error al procesar la salida.");
+        }
+    } catch (err) {
+        alert("❌ Error crítico: " + err.message);
+    }
+}
+
+    function descargarCSV() {
+        let csv = "ITEM,DESC,LOC,STOCK_ACT,MC,CAJAS_TOT,BN1_PROY,CANT_SACAR,STOCK_FIN\n";
+        itemsPicking.forEach(i => {
+            const final = i.stockActual - i.cant_a_sacar;
+            const mc = i.mc_val || 0;
+            let cajas = 0;
+            let bn1 = final;
+            if(mc > 0) {
+                let llenas = Math.floor(final/mc);
+                bn1 = final % mc;
+                cajas = bn1 > 0 ? llenas + 1 : llenas;
+            }
+            csv += `"${i.item}","${i.desc}","${i.loc}",${i.stockActual},${i.mc_val},${cajas},${bn1},${i.cant_a_sacar},${final}\n`;
+        });
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'Reporte_Salida_Picking.csv'; a.click();
+    }
+
+    function descargarPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4');
+        doc.text("Reporte de Picking (Salida) - BetterDeals", 14, 15);
+        const rows = itemsPicking.map(i => {
+            const final = i.stockActual - i.cant_a_sacar;
+            const mc = i.mc_val || 0;
+            let cajas = 0;
+            let bn1 = final;
+            if(mc > 0) {
+                let llenas = Math.floor(final/mc);
+                bn1 = final % mc;
+                cajas = bn1 > 0 ? llenas + 1 : llenas;
+            }
+            return [i.item, i.loc, i.stockActual, i.mc_val, cajas, bn1, i.cant_a_sacar, final];
+        });
+        doc.autoTable({ 
+            head: [['Item', 'Loc', 'Actual', 'MC', 'Cajas T', 'BN#1', 'Sacar', 'Final']], 
+            body: rows, 
+            startY: 20,
+            theme: 'grid',
+            headStyles: { fillColor: [239, 68, 68] }
+        });
+        doc.save('Reporte_Picking.pdf');
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Inventario General - BetterDeals</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        :root { --primary: #1e40af; --bg: #f1f5f9; --border: #e2e8f0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); margin: 0; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 25px; }
+        
+        .header { border-bottom: 2px solid var(--bg); padding-bottom: 20px; margin-bottom: 20px; }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        
+        .controls-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 15px; align-items: end; }
+        
+        input, select { width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); font-size: 14px; outline: none; box-sizing: border-box; }
+        input:focus { border-color: var(--primary); }
+
+        .actions { display: flex; gap: 10px; }
+        .btn { padding: 12px 18px; border-radius: 8px; font-weight: bold; font-size: 13px; cursor: pointer; border: none; text-decoration: none; text-align: center; color: white; }
+        .btn-blue { background: var(--primary); }
+        .btn-green { background: #059669; }
+        .btn-gray { background: #4b5563; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; }
+        th { background: #f8fafc; color: #64748b; text-align: left; padding: 12px; border-bottom: 2px solid var(--border); text-transform: uppercase; }
+        td { padding: 12px; border-bottom: 1px solid var(--border); color: #1e293b; }
+        tr:hover { background: #f8fafc; }
+        
+        .badge-stock { padding: 4px 8px; border-radius: 6px; font-weight: 800; background: #dcfce7; color: #166534; display: inline-block; min-width: 30px; text-align: center; }
+        .badge-box { padding: 4px 8px; border-radius: 6px; font-weight: 700; background: #e0e7ff; color: #1e40af; }
+        .badge-bn { padding: 4px 8px; border-radius: 6px; font-weight: 700; background: #fef3c7; color: #92400e; }
+        .cat-tag { font-size: 10px; background: #f1f5f9; color: #475569; padding: 3px 6px; border-radius: 4px; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-top">
+                <h1 style="margin:0; color: var(--primary); font-weight: 800;">BetterDeals - Inventario Maestro</h1>
+                <div class="actions">
+                    <button class="btn btn-green" onclick="exportarCSV()">📊 CSV</button>
+                    <button class="btn btn-blue" onclick="exportarPDF()">📄 PDF</button>
+                    <a href="index.html" class="btn btn-gray">← VOLVER</a>
+                </div>
+            </div>
+
+            <div class="controls-grid">
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:bold; color:#64748b; margin-bottom:5px;">BUSCAR ITEM / DESCRIPCIÓN</label>
+                    <input type="text" id="smart-search" placeholder="Escribe para buscar..." oninput="cargarDatos()">
+                </div>
+                <div>
+                    <label style="display:block; font-size:11px; font-weight:bold; color:#64748b; margin-bottom:5px;">FILTRAR POR CATEGORÍA</label>
+                    <select id="cat-selector" onchange="cargarDatos()">
+                        <option value="TODAS">Mostrar Todo</option>
+                    </select>
+                </div>
+                <div id="count-info" style="font-size: 13px; color: #64748b; font-weight: 600;">
+                    Calculando productos...
+                </div>
+            </div>
+        </div>
+
+        <table id="main-table">
+            <thead>
+                <tr>
+                    <th>ITEM</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>LOCACIÓN</th>
+                    <th>STOCK</th>
+                    <th>MC</th>
+                    <th>📦 CAJAS</th>
+                    <th>🔢 BN#1</th>
+                    <th>CATEGORÍA</th>
+                </tr>
+            </thead>
+            <tbody id="lista-productos"></tbody>
+        </table>
+    </div>
+
+    <script>
+        let productosFiltrados = [];
+
+        async function cargarDatos() {
+            const cat = document.getElementById('cat-selector').value;
+            const q = document.getElementById('smart-search').value;
+            const tbody = document.getElementById('lista-productos');
+            
+            try {
+                const res = await fetch(`/api/inventario-completo?categoria=${encodeURIComponent(cat)}&q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                
+                // CAMBIO SOLICITADO: Filtrar para mostrar solo items con STOCK mayor a 0
+                productosFiltrados = data.productos.filter(p => (parseInt(p.STOCK) || 0) > 0);
+
+                const selector = document.getElementById('cat-selector');
+                if (selector.options.length <= 1) {
+                    data.categorias.sort().forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c; opt.textContent = c;
+                        selector.appendChild(opt);
+                    });
+                }
+
+                tbody.innerHTML = '';
+                document.getElementById('count-info').innerText = `Mostrando: ${productosFiltrados.length} productos con stock`;
+
+                productosFiltrados.forEach(p => {
+                    const stock = parseInt(p.STOCK) || 0;
+                    const mc = parseInt(p.MC) || 0;
+                    let cajas = 0;
+                    let bn1 = stock;
+
+                    if (mc > 0) {
+                        const llenas = Math.floor(stock / mc);
+                        bn1 = stock % mc;
+                        cajas = bn1 > 0 ? llenas + 1 : llenas;
+                    }
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-weight:bold">${p.ITEM}</td>
+                        <td>${p.Description}</td>
+                        <td style="font-weight:bold; color: #b45309">${p.loc || '---'}</td>
+                        <td><span class="badge-stock">${stock}</span></td>
+                        <td>${mc}</td>
+                        <td><span class="badge-box">${cajas}</span></td>
+                        <td><span class="badge-bn">${bn1}</span></td>
+                        <td><span class="cat-tag">${p.categoria || 'GENERAL'}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:red;">Error de conexión</td></tr>';
+            }
+        }
+
+        function exportarCSV() {
+            const dataExport = productosFiltrados.map(p => {
+                const s = parseInt(p.STOCK) || 0;
+                const m = parseInt(p.MC) || 0;
+                const bn = m > 0 ? s % m : s;
+                return {
+                    ITEM: p.ITEM,
+                    DESCRIPCION: p.Description,
+                    LOC: p.loc,
+                    STOCK: s,
+                    MC: m,
+                    CAJAS: m > 0 ? Math.ceil(s/m) : 0,
+                    BN1: bn,
+                    CATEGORIA: p.categoria
+                };
+            });
+            const csv = Papa.unparse(dataExport);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "Inventario_Logistico.csv";
+            link.click();
+        }
+
+        function exportarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('l', 'mm', 'a4');
+            doc.text("REPORTE LOGISTICO BETTERDEALS", 14, 15);
+            
+            const tableData = productosFiltrados.map(p => {
+                const s = parseInt(p.STOCK) || 0;
+                const m = parseInt(p.MC) || 0;
+                return [
+                    p.ITEM, p.Description.substring(0,35), p.loc, s, m, 
+                    m > 0 ? Math.ceil(s/m) : 0, 
+                    m > 0 ? s % m : s, 
+                    p.categoria
+                ];
+            });
+
+            doc.autoTable({
+                head: [['ITEM', 'DESC', 'LOC', 'STOCK', 'MC', 'CAJAS', 'BN#1', 'CAT']],
+                body: tableData,
+                startY: 20,
+                styles: { fontSize: 7 },
+                headStyles: { fillColor: [30, 64, 175] }
+            });
+            doc.save("Inventario_Completo.pdf");
+        }
+
+        window.onload = cargarDatos;
+    </script>
+</body>
+</html>

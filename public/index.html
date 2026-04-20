@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetterDeals Logistics - Pro Inventory Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
+    <style>
+        :root {
+            --primary: #1e40af; --primary-dark: #1e3a8a; --bg-body: #f1f5f9;
+            --bg-card: #ffffff; --border: #e2e8f0; --text-main: #1e293b;
+            --text-muted: #64748b; --highlight-bg: #fef3c7; --highlight-text: #92400e;
+            --green-action: #10b981; --red-action: #ef4444; --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1); --accent-picking: #6366f1;
+            --accent-entrada: #059669; 
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); margin: 0; padding: 30px; display: flex; justify-content: center; }
+        .main-container { background-color: var(--bg-card); width: 100%; max-width: 1000px; border-radius: 16px; box-shadow: var(--shadow-lg); border: 1px solid var(--border); overflow: hidden; }
+        .header-section { background: linear-gradient(135deg, var(--primary) 0%, #3b82f6 100%); padding: 25px 40px; display: flex; align-items: center; justify-content: space-between; color: white; gap: 20px; }
+        .search-area { flex-grow: 1; position: relative; }
+        #search-input { width: 100%; padding: 14px 22px; border: none; border-radius: 50px; font-size: 16px; outline: none; box-shadow: inset var(--shadow-md); }
+        .nav-buttons { display: flex; gap: 10px; }
+        .btn-nav { color: white; padding: 12px 18px; border-radius: 50px; border: none; font-weight: 800; font-size: 12px; cursor: pointer; text-decoration: none; text-align: center; display: flex; align-items: center; gap: 5px; }
+        .btn-picking { background-color: var(--accent-picking); }
+        .btn-entrada { background-color: var(--accent-entrada); }
+        #sug-box { position: absolute; background: white; width: 100%; z-index: 100; display: none; max-height: 350px; overflow-y: auto; border-radius: 12px; box-shadow: var(--shadow-lg); margin-top: 8px; color: var(--text-main); }
+        .s-item { padding: 14px 18px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 14px; line-height: 1.4; }
+        .s-item:hover { background-color: #eff6ff; }
+        .s-item b { color: var(--primary); }
+        .s-item i { color: var(--text-muted); font-size: 12px; display: block; margin-top: 2px; }
+        .content-body { display: grid; grid-template-columns: 1.8fr 1fr; gap: 30px; padding: 40px; }
+        .form-row { display: flex; gap: 20px; margin-bottom: 20px; }
+        .field { display: flex; flex-direction: column; flex: 1; }
+        label { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 7px; text-transform: uppercase; }
+        input { padding: 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 15px; }
+        input[readonly] { background-color: #f1f5f9; cursor: not-allowed; }
+        .loc-input { background-color: var(--highlight-bg); color: var(--highlight-text); font-weight: 700; border: 2px solid #f59e0b; text-transform: uppercase; }
+        .inventory-section { margin-top: 30px; padding: 25px; background-color: #f1f5f9; border-radius: 12px; }
+        .inventory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+        .stock-main-value { font-size: 36px; font-weight: 800; color: var(--primary); }
+        .editable-mc { border: 2px solid var(--primary); font-weight: 700; font-size: 20px; text-align: center; width: 100%; }
+        .btn { padding: 14px; border: none; border-radius: 8px; color: white; font-weight: 700; cursor: pointer; text-transform: uppercase; width: 100%; }
+        .btn-plus { background-color: var(--green-action); margin-bottom: 5px; }
+        .btn-minus { background-color: var(--red-action); }
+        .right-panel { background-color: #f8fafc; padding: 25px; border-radius: 12px; border: 1px solid var(--border); }
+        .box-logic-card { background-color: var(--primary); color: white; padding: 20px; border-radius: 12px; margin-top: 20px; }
+        .report-btns { margin-top: 25px; padding-top: 20px; border-top: 2px dashed var(--border); }
+        .btn-rep { background: white; color: var(--primary); border: 2px solid var(--primary); font-size: 11px; margin-top: 8px; padding: 10px; width: 100%; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="header-section">
+            <div style="font-weight:800;">BETTERDEALS</div>
+            <div class="search-area">
+                <input type="text" id="search-input" placeholder="🔍 Buscar por ITEM, Descripción o Short Desc..." autocomplete="off">
+                <div id="sug-box"></div>
+            </div>
+           <div class="nav-buttons">
+         <a href="inventario.html" class="btn-nav" style="background-color: #4b5563;">📊 VER BASE DE DATOS</a>
+         <a href="entrada.html" class="btn-nav btn-entrada">📥 ENTRADA</a>
+        <a href="picking.html" class="btn-nav btn-picking">📋 PICKING</a>
+        </div>
+        </div>
+
+        <div class="content-body">
+            <div class="left-panel">
+                <div class="form-row">
+                    <div class="field"><label>Item Number</label><input type="text" id="v-item" readonly></div>
+                    <div class="field" style="flex:2"><label>Description</label><input type="text" id="v-desc" readonly></div>
+                </div>
+                <div class="form-row">
+                    <div class="field"><label>Short Description</label><input type="text" id="v-short" readonly></div>
+                    <div class="field"><label>Locación</label><input type="text" id="id-loc" class="loc-input"></div>
+                </div>
+
+                <div class="inventory-section">
+                    <div class="inventory-grid">
+                        <div class="stat-card" style="grid-column: span 1.5;"><label>Stock</label><div id="v-stock-display" class="stock-main-value">0</div></div>
+                        <div class="stat-card"><label>Cajas</label><div id="v-box-display" style="font-size:20px; font-weight:800;">0</div></div>
+                        <div class="stat-card"><label>MC</label><input type="number" id="id-mc" class="editable-mc" oninput="recalcularDesdeMC()"></div>
+                        <div class="stat-card"><label>BN#1</label><div id="v-bn1-display" style="font-size:20px; font-weight:800;">0</div></div>
+                    </div>
+                    <div style="background:white; padding:20px; border-radius:8px; display:flex; gap:20px;">
+                        <input type="number" id="exact-quantity" style="width:120px; font-size:24px; text-align:center; border:2px solid var(--primary); border-radius:8px;" placeholder="0">
+                        <div style="flex:1">
+                            <button class="btn btn-plus" onclick="guardar(1)">+ Aumentar</button>
+                            <button class="btn btn-minus" onclick="guardar(-1)">- Descontar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-panel">
+                <label>Logs</label>
+                <div id="status-log" style="font-size:13px; margin:10px 0;">Listo para buscar...</div>
+                <div id="calc-display" class="box-logic-card" style="display:none;"><div id="txt-formula" style="font-size:18px; font-weight:800;"></div></div>
+                <div class="report-btns">
+                    <label>Reportes</label>
+                    <button class="btn-rep" onclick="descargarReporte('pdf')">📄 DESCARGAR PDF</button>
+                    <button class="btn-rep" onclick="descargarReporte('csv')">📊 DESCARGAR CSV</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentItem = null;
+        const searchInput = document.getElementById('search-input');
+        const sugBox = document.getElementById('sug-box');
+
+        // BUSCADOR MEJORADO CON SHORT DESCRIPTION EN LA LISTA
+        searchInput.addEventListener('input', async () => {
+            const q = searchInput.value.trim();
+            if (q.length < 2) { sugBox.style.display = 'none'; return; }
+            
+            try {
+                const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                sugBox.innerHTML = '';
+                
+                if (data.length > 0) {
+                    data.forEach(i => {
+                        const d = document.createElement('div');
+                        d.className = 's-item';
+                        // AQUÍ SE AGREGA EL SHORT DESCRIPTION A LA VISTA DE LA LISTA
+                        const short = i['short desc'] ? ` [${i['short desc']}]` : "";
+                        d.innerHTML = `<b>${i.ITEM}</b> - ${i.Description} <i>${short}</i>`;
+                        
+                        d.onclick = () => {
+                            currentItem = i;
+                            document.getElementById('v-item').value = i.ITEM;
+                            document.getElementById('v-desc').value = i.Description;
+                            document.getElementById('v-short').value = i['short desc'] || "";
+                            document.getElementById('id-loc').value = i.loc || i.location || "";
+                            document.getElementById('id-mc').value = i.MC || "";
+                            document.getElementById('v-stock-display').innerText = i.STOCK || 0;
+                            recalcular(i.STOCK, i.MC);
+                            sugBox.style.display = 'none';
+                            searchInput.value = ''; // Limpia el buscador al seleccionar
+                            document.getElementById('calc-display').style.display = 'block';
+                            document.getElementById('status-log').innerText = "✅ Producto seleccionado";
+                        };
+                        sugBox.appendChild(d);
+                    });
+                    sugBox.style.display = 'block';
+                } else {
+                    sugBox.innerHTML = '<div class="s-item">Sin resultados</div>';
+                    sugBox.style.display = 'block';
+                }
+            } catch(e) { console.error(e); }
+        });
+
+        function recalcular(s, m) {
+            const stock = parseInt(s) || 0;
+            const mc = parseInt(m) || 0;
+            let boxes = 0, bn = stock;
+            if (mc > 0) {
+                let llenas = Math.floor(stock / mc);
+                bn = stock % mc;
+                boxes = bn > 0 ? llenas + 1 : llenas;
+            }
+            document.getElementById('v-box-display').innerText = boxes;
+            document.getElementById('v-bn1-display').innerText = bn;
+            document.getElementById('txt-formula').innerText = `${boxes} Cajas Totales`;
+        }
+
+        function recalcularDesdeMC() {
+            if(currentItem) recalcular(document.getElementById('v-stock-display').innerText, document.getElementById('id-mc').value);
+        }
+
+        async function guardar(signo) {
+            if(!currentItem) return;
+            const adj = parseInt(document.getElementById('exact-quantity').value) || 0;
+            if (adj === 0) return alert("Ingresa una cantidad");
+
+            const nuevoStock = Math.max(0, parseInt(document.getElementById('v-stock-display').innerText) + (adj * signo));
+            const mc = document.getElementById('id-mc').value;
+            const loc = document.getElementById('id-loc').value;
+
+            const res = await fetch('/update-stock', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ item: currentItem.ITEM, stock: nuevoStock, mc, location: loc })
+            });
+
+            if(res.ok) {
+                document.getElementById('v-stock-display').innerText = nuevoStock;
+                recalcular(nuevoStock, mc);
+                document.getElementById('status-log').innerText = "💾 ¡Stock actualizado en Excel!";
+                document.getElementById('exact-quantity').value = '';
+            }
+        }
+
+        async function descargarReporte(tipo) {
+            document.getElementById('status-log').innerText = "⏳ Generando reporte...";
+            const res = await fetch('/search?q=');
+            const data = await res.json();
+            const filtrados = data.filter(i => (parseInt(i.STOCK) || 0) > 0);
+
+            const rows = filtrados.map(i => {
+                const s = parseInt(i.STOCK) || 0;
+                const m = parseInt(i.MC) || 0;
+                return {
+                    ITEM: i.ITEM,
+                    DESC: i.Description,
+                    LOC: i.loc || i.location || '',
+                    STOCK: s,
+                    MC: m,
+                    BOX: m > 0 ? Math.ceil(s/m) : 0,
+                    BN1: m > 0 ? s % m : s
+                };
+            });
+
+            if (tipo === 'csv') {
+                const csv = Papa.unparse(rows);
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "Inventario_BetterDeals.csv";
+                link.click();
+            } else {
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('l', 'mm', 'a4');
+                doc.text("INVENTARIO MEJORADO BETTERDEALS", 14, 15);
+                doc.autoTable({
+                    head: [['ITEM', 'DESCRIPCION', 'LOC', 'STOCK', 'MC', 'CAJAS', 'BN#1']],
+                    body: rows.map(r => [r.ITEM, r.DESC.substring(0,40), r.LOC, r.STOCK, r.MC, r.BOX, r.BN1]),
+                    startY: 20
+                });
+                doc.save("Reporte_Inventario.pdf");
+            }
+            document.getElementById('status-log').innerText = "✅ Reporte generado con éxito";
+        }
+        
+        // Cerrar sugerencias al hacer click fuera
+        document.addEventListener('click', (e) => {
+            if (e.target !== searchInput) sugBox.style.display = 'none';
+        });
+    </script>
+</body>
+</html>
