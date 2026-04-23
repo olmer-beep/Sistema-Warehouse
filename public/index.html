@@ -205,6 +205,7 @@ td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
     <a href="inventario.html" onclick="window.location.href='inventario.html'; return false;">📊 Inventario General</a>
     <a href="picking.html" onclick="window.location.href='picking.html'; return false;">📋 Picking Masivo</a>
     <a href="comparacion.html" onclick="window.location.href='comparacion.html'; return false;">⚖️ Comparar Stocks</a>
+    <a href="pedidos.html" onclick="window.location.href='pedidos.html'; return false;" style="background:#fffbeb; border-color:#f59e0b; color:#92400e;">🛒 Generador de Pedidos</a>
   </div>
 
   <div class="content">
@@ -472,13 +473,35 @@ function recalcular() {
 async function actualizar(sig) {
     if (!currentItem) return;
     const aj = parseInt(document.getElementById('q-ajuste').value) || 0;
+    if (aj === 0) return;
     let ns = parseInt(document.getElementById('v-stock-txt').innerText) + (aj * sig);
+    if (ns < 0) ns = 0;
     const res = await fetch('/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item: currentItem.ITEM, nuevoStock: ns < 0 ? 0 : ns, nuevoMC: document.getElementById('id-mc').value, nuevaLoc: document.getElementById('id-loc').value })
+        body: JSON.stringify({ item: currentItem.ITEM, nuevoStock: ns, nuevoMC: document.getElementById('id-mc').value, nuevaLoc: document.getElementById('id-loc').value })
     });
-    if (res.ok) { document.getElementById('v-stock-txt').innerText = ns < 0 ? 0 : ns; recalcular(); }
+    if (res.ok) {
+        const itemGuardado = currentItem.ITEM;
+        // Mostrar mensaje de confirmación
+        toast(`✅ ${itemGuardado} guardado — Stock: ${ns}`);
+        // Limpiar todos los campos listos para el siguiente ítem
+        currentItem = null;
+        document.getElementById('v-item').value    = '';
+        document.getElementById('v-desc').value    = '';
+        document.getElementById('v-short').value   = '';
+        document.getElementById('id-loc').value    = '';
+        document.getElementById('id-mc').value     = '';
+        document.getElementById('q-ajuste').value  = '';
+        document.getElementById('v-stock-txt').innerText = '0';
+        document.getElementById('v-bn1-txt').innerText   = '0';
+        document.getElementById('v-box-txt').innerText   = '0';
+        // Mover cursor al buscador para el siguiente ítem
+        sInput.focus();
+        sInput.select();
+    } else {
+        toast('❌ Error al guardar', true);
+    }
 }
 
 async function abrirPicking() {

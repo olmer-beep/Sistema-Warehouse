@@ -8,6 +8,23 @@ const app = express();
 app.use(express.static('public'));
 app.use(express.json({ limit: '50mb' }));
 
+// --- CARPETA DE FOTOS ---
+const FOTOS_PATH = path.join(__dirname, 'fotos');
+app.use('/fotos', express.static(FOTOS_PATH));
+
+// Endpoint foto por item
+app.get('/api/foto/:item', (req, res) => {
+    const item = req.params.item.toString().trim();
+    const exts = ['jpg', 'jpeg', 'png', 'webp', 'JPG', 'JPEG', 'PNG'];
+    for (const ext of exts) {
+        const ruta = path.join(FOTOS_PATH, `${item}.${ext}`);
+        if (fs.existsSync(ruta)) {
+            return res.json({ found: true, url: `/fotos/${item}.${ext}` });
+        }
+    }
+    res.json({ found: false });
+});
+
 // --- 1. BUSCADOR DINÁMICO DEL ARCHIVO CSV ---
 function encontrarCSV() {
     const nombreExacto = 'Untitled spreadsheet - Sheet1.csv';
@@ -20,7 +37,7 @@ function encontrarCSV() {
 
 let DB_PATH = encontrarCSV();
 
-// --- RUTA DEL CSV MAESTRO (Warehouse Counter Part) ---
+// --- CSV MAESTRO (Warehouse Counter Part) ---
 const WAREHOUSE_CSV_PATH = path.join(__dirname, 'warehouse_master.csv');
 
 // --- 2. FUNCIONES DE LECTURA Y ESCRITURA ---
@@ -47,14 +64,11 @@ const leerCSV = (ruta) => {
 const guardarCSV = async (data) => {
     if (!data || data.length === 0) return;
     const headers = Object.keys(data[0]).map(k => ({ id: k, title: k }));
-    const writer = createCsvWriter({
-        path: DB_PATH,
-        header: headers
-    });
+    const writer = createCsvWriter({ path: DB_PATH, header: headers });
     await writer.writeRecords(data);
 };
 
-// --- Cache del warehouse para eficiencia ---
+// Cache warehouse
 let warehouseCache = null;
 async function getWarehouseMap() {
     if (warehouseCache) return warehouseCache;
@@ -67,15 +81,13 @@ async function getWarehouseMap() {
     warehouseCache = map;
     return map;
 }
-function invalidateWarehouseCache() {
-    warehouseCache = null;
-}
+function invalidateWarehouseCache() { warehouseCache = null; }
 
 // ================================================================
-// RUTAS EXISTENTES (tu código original, sin tocar)
+// RUTAS ORIGINALES
 // ================================================================
 
-// A. Buscador para Sugerencias (index.html y picking.html)
+// A. Buscador
 app.get('/search', async (req, res) => {
     const q = (req.query.q || "").toUpperCase().trim();
     if (!DB_PATH) return res.status(500).json({ error: "Archivo CSV no encontrado" });
@@ -89,7 +101,7 @@ app.get('/search', async (req, res) => {
     res.json(filtered);
 });
 
-// B. Inventario Maestro con Filtros (inventario.html)
+// B. Inventario Maestro con Filtros
 app.get('/api/inventario-completo', async (req, res) => {
     const { categoria, q } = req.query;
     const data = await leerCSV(DB_PATH);
@@ -107,7 +119,7 @@ app.get('/api/inventario-completo', async (req, res) => {
     res.json({ productos: filtrados, categorias });
 });
 
-// C. Actualización Individual (index.html)
+// C. Actualización Individual
 app.post('/update-stock', async (req, res) => {
     const { item, stock, mc, location } = req.body;
     try {
@@ -123,7 +135,7 @@ app.post('/update-stock', async (req, res) => {
     } catch (error) { res.status(500).json({ success: false }); }
 });
 
-// C2. Alias /update (el index.html original usa esta ruta)
+// C2. Alias /update
 app.post('/update', async (req, res) => {
     const { item, nuevoStock, nuevoMC, nuevaLoc } = req.body;
     try {
@@ -135,13 +147,11 @@ app.post('/update', async (req, res) => {
             if (nuevaLoc !== undefined) data[idx].loc = (nuevaLoc || "").toUpperCase();
             await guardarCSV(data);
             res.json({ success: true });
-        } else {
-            res.status(404).json({ success: false });
-        }
+        } else { res.status(404).json({ success: false }); }
     } catch (e) { res.status(500).json({ success: false }); }
 });
 
-// D. Proceso Masivo de ENTRADA (entrada.html)
+// D. Entrada Masiva
 app.post('/api/process-bulk-entry', async (req, res) => {
     const itemsEntrada = req.body;
     try {
@@ -160,7 +170,7 @@ app.post('/api/process-bulk-entry', async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// E. Proceso Masivo de PICKING / SALIDA (picking.html)
+// E. Picking Masivo
 app.post('/api/process-bulk-picking', async (req, res) => {
     const itemsPicking = req.body;
     try {
@@ -180,10 +190,9 @@ app.post('/api/process-bulk-picking', async (req, res) => {
 });
 
 // ================================================================
-// NUEVAS RUTAS: SISTEMA MAESTRO WAREHOUSE (solo las agregadas hoy)
+// RUTAS WAREHOUSE MAESTRO
 // ================================================================
 
-// Upload del CSV maestro - usa express.raw con type: () => true para capturar CUALQUIER Content-Type
 app.post('/api/upload-warehouse',
     express.raw({ limit: '50mb', type: () => true }),
     (req, res) => {
@@ -196,90 +205,59 @@ app.post('/api/upload-warehouse',
             } else {
                 return res.status(400).json({ success: false, error: 'No se recibió contenido' });
             }
-
             if (!contenido || contenido.length < 10) {
                 return res.status(400).json({ success: false, error: 'Archivo vacío o inválido' });
             }
-
-            // Quitar BOM (Byte Order Mark) si existe
-            if (contenido.charCodeAt(0) === 0xFEFF) {
-                contenido = contenido.substring(1);
-            }
-
+            if (contenido.charCodeAt(0) === 0xFEFF) contenido = contenido.substring(1);
             fs.writeFileSync(WAREHOUSE_CSV_PATH, contenido);
             invalidateWarehouseCache();
-
             const lineas = contenido.split('\n').filter(l => l.trim()).length - 1;
-            console.log(`✓ CSV Maestro actualizado: ${lineas} registros (${contenido.length} bytes)`);
-
-            res.json({
-                success: true,
-                message: 'Archivo maestro actualizado correctamente',
-                registros: lineas,
-                bytes: contenido.length,
-                timestamp: new Date().toISOString()
-            });
+            res.json({ success: true, message: 'Archivo maestro actualizado', registros: lineas, timestamp: new Date().toISOString() });
         } catch (e) {
-            console.error('Error upload-warehouse:', e);
             res.status(500).json({ success: false, error: e.message });
         }
     }
 );
 
-// Info del warehouse para un ítem específico
 app.get('/api/warehouse-item/:item', async (req, res) => {
     try {
         const map = await getWarehouseMap();
         const info = map[req.params.item.toString().trim()] || null;
         res.json(info);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Estado del archivo maestro
 app.get('/api/warehouse-status', (req, res) => {
-    if (!fs.existsSync(WAREHOUSE_CSV_PATH)) {
-        return res.json({ loaded: false });
-    }
+    if (!fs.existsSync(WAREHOUSE_CSV_PATH)) return res.json({ loaded: false });
     const stats = fs.statSync(WAREHOUSE_CSV_PATH);
-    res.json({
-        loaded: true,
-        lastUpdate: stats.mtime,
-        size: stats.size
-    });
+    res.json({ loaded: true, lastUpdate: stats.mtime, size: stats.size });
 });
 
-// Comparación: Stock Local vs columna I (WAREHOUSE)
 app.get('/api/comparacion', async (req, res) => {
     try {
         const mainData = await leerCSV(DB_PATH);
         const warehouseMap = await getWarehouseMap();
-
         const resultado = mainData.map(item => {
             const itemKey = (item.ITEM || '').toString().trim();
             const wh = warehouseMap[itemKey];
             const stockLocal = parseInt(item.STOCK) || 0;
             const stockWarehouse = wh ? (parseInt(wh.WAREHOUSE) || 0) : null;
             const diferencia = wh ? (stockLocal - stockWarehouse) : null;
-
             return {
                 item: itemKey,
+                cat: item.categoria || '',
                 desc: item.Description || '',
                 shortDesc: item['short desc'] || '',
                 loc: item.loc || '',
-                stockLocal,
-                stockWarehouse,
-                diferencia,
+                stockLocal, stockWarehouse, diferencia,
                 encontrado: !!wh,
+                salina: wh ? (parseInt(wh.SALINA) || 0) : null,
                 priceOB: wh ? wh.PriceOB : null,
                 all: wh ? wh.ALL : null,
                 stmaria: wh ? wh.STMARIA : null,
-                salina: wh ? wh.SALINA : null,
                 stmwh: wh ? wh.STMWH : null,
             };
         });
-
         const stats = {
             total: resultado.length,
             encontrados: resultado.filter(r => r.encontrado).length,
@@ -289,11 +267,163 @@ app.get('/api/comparacion', async (req, res) => {
             faltante_local: resultado.filter(r => r.encontrado && r.diferencia < 0).length,
             sobrante_local: resultado.filter(r => r.encontrado && r.diferencia > 0).length,
         };
-
         res.json({ items: resultado, stats });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Retorna TODOS los items del maestro como mapa {itemNumber: row}
+// Usado por pedidos.html para lookups masivos sin múltiples requests
+app.get('/api/warehouse-all', async (req, res) => {
+    try {
+        if (!fs.existsSync(WAREHOUSE_CSV_PATH)) return res.json({ loaded: false, map: {} });
+        const map = await getWarehouseMap();
+        res.json({ loaded: true, map });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// PEDIDOS: Persiste MAXIMOS del CSV de pedidos en servidor
+// ================================================================
+const PEDIDOS_PATH = path.join(__dirname, 'pedidos_maximos.json');
+
+function splitCSVLineSrv(line) {
+    const result = []; let current = ''; let inQuotes = false;
+    for (let i = 0; i < (line || '').length; i++) {
+        const ch = line[i];
+        if (ch === '"') { inQuotes = !inQuotes; }
+        else if (ch === ',' && !inQuotes) { result.push(current); current = ''; }
+        else { current += ch; }
     }
+    result.push(current);
+    return result;
+}
+
+// Subir CSV pedidos → persiste en servidor
+app.post('/api/upload-pedidos',
+    express.raw({ limit: '20mb', type: () => true }),
+    (req, res) => {
+        try {
+            let contenido;
+            if (Buffer.isBuffer(req.body)) contenido = req.body.toString('utf8');
+            else if (typeof req.body === 'string') contenido = req.body;
+            else return res.status(400).json({ success: false, error: 'Sin contenido' });
+            if (contenido.charCodeAt(0) === 0xFEFF) contenido = contenido.substring(1);
+
+            const lineas = contenido.split(/\r?\n/);
+            const mapa = {};
+            let count = 0;
+            for (let i = 1; i < lineas.length; i++) {
+                const cols = splitCSVLineSrv(lineas[i]);
+                if (!cols || cols.length < 5) continue;
+                const cat = (cols[0]||'').trim(), item = (cols[1]||'').trim();
+                const desc = (cols[2]||'').trim(), shortDesc = (cols[3]||'').trim();
+                const max = parseInt(cols[4]) || 0;
+                if (!item || item==='TEMPLATE' || cat==='UNDEFINED' || cat==='SERVICE') continue;
+                if (!cat || !item || max <= 0) continue;
+                mapa[item] = { cat, desc, shortDesc, max };
+                count++;
+            }
+            const payload = { items: mapa, updatedAt: new Date().toISOString(), total: count };
+            fs.writeFileSync(PEDIDOS_PATH, JSON.stringify(payload));
+            res.json({ success: true, total: count, updatedAt: payload.updatedAt });
+        } catch (e) { res.status(500).json({ success: false, error: e.message }); }
+    }
+);
+
+// Leer datos de pedidos
+app.get('/api/pedidos-data', (req, res) => {
+    if (!fs.existsSync(PEDIDOS_PATH)) return res.json({ loaded: false, items: {}, updatedAt: null });
+    try {
+        const data = JSON.parse(fs.readFileSync(PEDIDOS_PATH, 'utf8'));
+        res.json({ loaded: true, items: data.items || {}, updatedAt: data.updatedAt, total: data.total });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Actualizar MAX de un ítem (edición manual en pantalla)
+app.patch('/api/pedidos-data/:item', (req, res) => {
+    const itemKey = req.params.item;
+    try {
+        if (!fs.existsSync(PEDIDOS_PATH)) return res.status(404).json({ error: 'No hay datos' });
+        const data = JSON.parse(fs.readFileSync(PEDIDOS_PATH, 'utf8'));
+        if (data.items[itemKey]) {
+            data.items[itemKey].max = parseInt(req.body.max) || data.items[itemKey].max;
+        } else {
+            data.items[itemKey] = req.body;
+        }
+        data.updatedAt = new Date().toISOString();
+        fs.writeFileSync(PEDIDOS_PATH, JSON.stringify(data));
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Agregar ítem manualmente al mapa
+app.post('/api/pedidos-data', (req, res) => {
+    try {
+        let data = { items: {}, updatedAt: new Date().toISOString(), total: 0 };
+        if (fs.existsSync(PEDIDOS_PATH)) {
+            try { data = JSON.parse(fs.readFileSync(PEDIDOS_PATH, 'utf8')); } catch(e) {}
+        }
+        const { item, cat, desc, shortDesc, max } = req.body;
+        if (!item || !max) return res.status(400).json({ error: 'item y max requeridos' });
+        data.items[item] = { cat: cat||'MANUAL', desc: desc||'', shortDesc: shortDesc||'', max: parseInt(max) };
+        data.updatedAt = new Date().toISOString();
+        data.total = Object.keys(data.items).length;
+        fs.writeFileSync(PEDIDOS_PATH, JSON.stringify(data));
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// SYNC EN TIEMPO REAL — Server-Sent Events (SSE)
+// ================================================================
+const sseClients = { entrada: new Set(), picking: new Set() };
+
+// Cliente se conecta al stream → recibe actualizaciones en vivo
+app.get('/api/sync/stream/:lista', (req, res) => {
+    const lista = req.params.lista;
+    if (!sseClients[lista]) return res.status(400).end();
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    sseClients[lista].add(res);
+
+    // Enviar estado actual al conectarse
+    const filePath = lista === 'entrada'
+        ? path.join(__dirname, 'sync_entrada.json')
+        : path.join(__dirname, 'sync_picking.json');
+    if (fs.existsSync(filePath)) {
+        try { res.write(`data: ${fs.readFileSync(filePath, 'utf8')}\n\n`); } catch(e) {}
+    }
+
+    // Heartbeat cada 25s para mantener conexión viva
+    const hb = setInterval(() => { try { res.write(': hb\n\n'); } catch(e) {} }, 25000);
+
+    req.on('close', () => {
+        sseClients[lista].delete(res);
+        clearInterval(hb);
+    });
+});
+
+// Guardar lista y transmitir a todos los dispositivos conectados
+app.post('/api/sync/:lista', (req, res) => {
+    const lista = req.params.lista;
+    if (!sseClients[lista]) return res.status(400).json({ error: 'Lista inválida' });
+    try {
+        const deviceId = req.body.deviceId || '';
+        const payload = JSON.stringify({ items: req.body.items || [], deviceId });
+        const filePath = lista === 'entrada'
+            ? path.join(__dirname, 'sync_entrada.json')
+            : path.join(__dirname, 'sync_picking.json');
+        fs.writeFileSync(filePath, payload);
+        // Broadcast a todos los clientes conectados
+        sseClients[lista].forEach(client => {
+            try { client.write(`data: ${payload}\n\n`); } catch(e) { sseClients[lista].delete(client); }
+        });
+        res.json({ success: true, clients: sseClients[lista].size });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // --- INICIO ---
@@ -303,6 +433,6 @@ app.listen(PORT, () => {
     console.log(`🚀 BETTERDEALS LOGISTICS - ONLINE`);
     console.log(`📡 PUERTO: ${PORT}`);
     console.log(`📂 CSV Local: ${DB_PATH || '⚠️ NO ENCONTRADO'}`);
-    console.log(`📂 CSV Maestro: ${fs.existsSync(WAREHOUSE_CSV_PATH) ? 'CARGADO ✓' : '⏳ Pendiente de subir'}`);
+    console.log(`📂 CSV Maestro: ${fs.existsSync(WAREHOUSE_CSV_PATH) ? 'CARGADO ✓' : '⏳ Pendiente'}`);
     console.log(`==========================================\n`);
 });

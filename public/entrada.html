@@ -30,24 +30,32 @@
         .input-mc { border-color: var(--accent) !important; color: var(--accent); }
         .loc-input { width: 100px; padding: 8px; border: 2px solid #f59e0b; border-radius: 6px; font-weight: bold; text-align: center; text-transform: uppercase; }
         .stock-new { background: #dcfce7; color: #166534; padding: 5px 10px; border-radius: 6px; font-weight: 800; font-size: 15px; }
-        .btn-confirm { background: var(--primary); color: white; padding: 20px; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 25px; font-size: 16px; display: none; text-transform: uppercase;}
+        .btn-confirm { background: var(--primary); color: white; padding: 20px; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 25px; font-size: 16px; display: none; text-transform: uppercase; }
         .btn-del { color: #ef4444; background: none; border: none; font-weight: 800; cursor: pointer; font-size: 18px; }
-        /* ── FOTO (único bloque nuevo) ── */
         .foto-thumb { width: 60px; height: 60px; object-fit: contain; border-radius: 6px; background: #f8fafc; display: block; filter: contrast(1.08) saturate(1.1) brightness(1.02); }
         .foto-empty { width: 60px; height: 60px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-size: 20px; }
     </style>
 </head>
 <body>
-
 <div class="card">
     <div class="header">
         <div>
             <a href="index.html" style="text-decoration:none; color:var(--primary); font-weight:700;">⬅ VOLVER AL INVENTARIO</a>
             <h2 style="margin:5px 0 0 0;">📥 Entrada Masiva (Sumar + Editar MC)</h2>
         </div>
-        <div style="text-align: right">
-            <div id="count-total" style="font-size: 28px; font-weight: 800; color: var(--primary);">0</div>
-            <div style="font-size: 10px; color: #64748b; font-weight: 700;">PRODUCTOS EN LISTA</div>
+        <div style="display:flex; gap:18px; align-items:center; flex-wrap:wrap; justify-content:flex-end;">
+            <div style="text-align:center;">
+                <div id="count-total" style="font-size:28px; font-weight:800; color:var(--primary); line-height:1;">0</div>
+                <div style="font-size:9px; color:#64748b; font-weight:700; text-transform:uppercase;">Total</div>
+            </div>
+            <div style="text-align:center;">
+                <div id="count-checked" style="font-size:28px; font-weight:800; color:#10b981; line-height:1;">0</div>
+                <div style="font-size:9px; color:#64748b; font-weight:700; text-transform:uppercase;">✓ Marcados</div>
+            </div>
+            <div style="text-align:center;">
+                <div id="count-pending" style="font-size:28px; font-weight:800; color:#f59e0b; line-height:1;">0</div>
+                <div style="font-size:9px; color:#64748b; font-weight:700; text-transform:uppercase;">Pendientes</div>
+            </div>
         </div>
     </div>
 
@@ -97,10 +105,44 @@
     const sInput = document.getElementById('search-input');
     const sugBox = document.getElementById('sug-box');
 
-    window.onload = () => renderTable();
+    // ── AUTO-SYNC ──
+    const DEV_ID = 'e-' + Math.random().toString(36).substr(2,6);
+    let sseConn = null, pushTimer = null;
+
+    function conectarSync() {
+        if (sseConn) return;
+        sseConn = new EventSource('/api/sync/stream/entrada');
+        sseConn.onmessage = (e) => {
+            try {
+                const d = JSON.parse(e.data);
+                if (!d.items || d.deviceId === DEV_ID) return;
+                itemsEntrada = d.items;
+                localStorage.setItem('entrada_data', JSON.stringify(itemsEntrada));
+                renderTable();
+            } catch(ex) {}
+        };
+        sseConn.onerror = () => {
+            sseConn.close(); sseConn = null;
+            setTimeout(conectarSync, 3000);
+        };
+    }
+
+    function pushSync() {
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => {
+            fetch('/api/sync/entrada', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: itemsEntrada, deviceId: DEV_ID })
+            }).catch(() => {});
+        }, 300);
+    }
+
+    window.onload = () => { renderTable(); conectarSync(); };
 
     function guardarLocal() {
         localStorage.setItem('entrada_data', JSON.stringify(itemsEntrada));
+        pushSync();
     }
 
     function limpiarLista() {
@@ -111,7 +153,6 @@
         }
     }
 
-    // Buscador en tiempo real conectado al servidor
     sInput.addEventListener('input', async () => {
         const q = sInput.value.trim();
         if (q.length < 2) { sugBox.style.display = 'none'; return; }
@@ -130,14 +171,14 @@
         } catch (e) { console.error("Error buscando:", e); }
     });
 
+    document.addEventListener('click', e => { if (!e.target.closest('.search-area')) sugBox.style.display = 'none'; });
+
     async function buscarYAgregar(codigo, cantidad, locSugerida, esCSV) {
         if(itemsEntrada.find(x => x.item === codigo)) return;
         try {
             const res = await fetch(`/search?q=${encodeURIComponent(codigo)}`);
             const data = await res.json();
-            // Buscamos coincidencia exacta en el resultado
             const info = data.find(x => x.ITEM.toString().trim() === codigo.toString().trim());
-            
             if (info) {
                 itemsEntrada.push({
                     item: info.ITEM,
@@ -175,25 +216,31 @@
         reader.readAsText(file);
     }
 
+    // Cache de fotos: item → url (string) | false (sin foto) | undefined (no consultado)
+    const photoCache = {};
+
+    function fotoHtml(item) {
+        if (photoCache[item])        return `<img class="foto-thumb" src="${photoCache[item]}" alt="${item}">`;
+        if (photoCache[item] === false) return `<div class="foto-empty">📦</div>`;
+        return `<div class="foto-empty" id="foto-e-${item}">📦</div>`;
+    }
+
     function renderTable() {
         const body = document.getElementById('lista-body');
         body.innerHTML = '';
         itemsEntrada.forEach((it, idx) => {
             const stockFinal = it.stockActual + it.cant_a_sumar;
             const mc = it.mc_val || 0;
-            let cajas = 0;
-            let bn1_proyectado = stockFinal;
-
+            let cajas = 0, bn1_proyectado = stockFinal;
             if (mc > 0) {
                 let llenas = Math.floor(stockFinal / mc);
                 bn1_proyectado = stockFinal % mc;
                 cajas = bn1_proyectado > 0 ? llenas + 1 : llenas;
             }
-
             body.innerHTML += `
                 <tr style="${it.checked ? 'background:#f0fdf4':''}">
                     <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="itemsEntrada[${idx}].checked=this.checked; guardarLocal(); renderTable()"></td>
-                    <td><div class="foto-empty" id="foto-e-${it.item}">📦</div></td>
+                    <td>${fotoHtml(it.item)}</td>
                     <td><b>${it.item}</b></td>
                     <td><span style="font-size:13px; font-weight:600; color:#1e293b;">${it.desc}</span>${it.shortDesc ? `<div style="font-size:11px; color:#64748b; margin-top:2px;">${it.shortDesc}</div>` : ''}</td>
                     <td><input type="text" class="loc-input" value="${it.loc}" onchange="itemsEntrada[${idx}].loc=this.value.toUpperCase(); guardarLocal()"></td>
@@ -206,22 +253,27 @@
                     <td><button class="btn-del" onclick="itemsEntrada.splice(${idx},1); guardarLocal(); renderTable()">✕</button></td>
                 </tr>`;
         });
-        document.getElementById('count-total').innerText = itemsEntrada.length;
+        document.getElementById('count-total').innerText   = itemsEntrada.length;
+        document.getElementById('count-checked').innerText  = itemsEntrada.filter(x => x.checked).length;
+        document.getElementById('count-pending').innerText  = itemsEntrada.filter(x => !x.checked).length;
         document.getElementById('btn-confirm-final').style.display = itemsEntrada.length > 0 ? 'block' : 'none';
         guardarLocal();
         cargarFotosTabla();
     }
 
-    // ── FUNCIÓN NUEVA: carga fotos en segundo plano sin tocar la tabla ──
     async function cargarFotosTabla() {
         for (const it of itemsEntrada) {
+            if (photoCache[it.item] !== undefined) continue; // ya sabemos el resultado
             const el = document.getElementById('foto-e-' + it.item);
             if (!el) continue;
             try {
                 const res = await fetch(`/api/foto/${encodeURIComponent(it.item)}`);
                 const data = await res.json();
                 if (data.found) {
-                    el.outerHTML = `<img class="foto-thumb" id="foto-e-${it.item}" src="${data.url}?t=${Date.now()}" alt="${it.item}">`;
+                    photoCache[it.item] = data.url;
+                    el.outerHTML = `<img class="foto-thumb" src="${data.url}" alt="${it.item}">`;
+                } else {
+                    photoCache[it.item] = false;
                 }
             } catch(e) {}
         }
@@ -230,27 +282,24 @@
     async function confirmarEntrada() {
         if (itemsEntrada.length === 0) return alert("No hay productos.");
         if (!confirm("¿Deseas inyectar estos cambios al Excel Maestro?")) return;
-
         const dataEnviar = itemsEntrada.map(it => ({
             item: it.item,
-            qty: parseInt(it.cant_a_sumar) || 0, 
-            mc: parseInt(it.mc_val) || 0,         
+            qty: parseInt(it.cant_a_sumar) || 0,
+            mc: parseInt(it.mc_val) || 0,
             loc: it.loc || ""
         }));
-
         try {
             const res = await fetch('/api/process-bulk-entry', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(dataEnviar)
             });
-
             const result = await res.json();
-            if(res.ok && result.success) { 
-                alert("✅ ¡ÉXITO! Inventario actualizado correctamente."); 
-                itemsEntrada = []; 
+            if(res.ok && result.success) {
+                alert("✅ ¡ÉXITO! Inventario actualizado correctamente.");
+                itemsEntrada = [];
                 localStorage.removeItem('entrada_data');
-                renderTable(); 
+                renderTable();
             } else {
                 alert("❌ Error: " + (result.error || "No se pudo actualizar."));
             }
@@ -264,12 +313,8 @@
         itemsEntrada.forEach(i => {
             const final = i.stockActual + i.cant_a_sumar;
             const mc = i.mc_val || 0;
-            let cajas = 0; let bn1 = final;
-            if(mc > 0) {
-                let llenas = Math.floor(final/mc);
-                bn1 = final % mc;
-                cajas = bn1 > 0 ? llenas + 1 : llenas;
-            }
+            let cajas = 0, bn1 = final;
+            if(mc > 0) { let llenas = Math.floor(final/mc); bn1 = final % mc; cajas = bn1 > 0 ? llenas + 1 : llenas; }
             csv += `"${i.item}","${i.desc}","${i.loc}",${i.stockActual},${i.mc_val},${cajas},${bn1},${i.cant_a_sumar},${final}\n`;
         });
         const blob = new Blob([csv], {type: 'text/csv'});
@@ -284,21 +329,11 @@
         const rows = itemsEntrada.map(i => {
             const final = i.stockActual + i.cant_a_sumar;
             const mc = i.mc_val || 0;
-            let cajas = 0; let bn1 = final;
-            if(mc > 0) {
-                let llenas = Math.floor(final/mc);
-                bn1 = final % mc;
-                cajas = bn1 > 0 ? llenas + 1 : llenas;
-            }
+            let cajas = 0, bn1 = final;
+            if(mc > 0) { let llenas = Math.floor(final/mc); bn1 = final % mc; cajas = bn1 > 0 ? llenas + 1 : llenas; }
             return [i.item, i.loc, i.stockActual, i.mc_val, cajas, bn1, i.cant_a_sumar, final];
         });
-        doc.autoTable({ 
-            head: [['Item', 'Loc', 'Actual', 'MC', 'Cajas T', 'BN#1', 'Sumar', 'Final']], 
-            body: rows, 
-            startY: 20,
-            theme: 'grid',
-            headStyles: { fillColor: [5, 150, 105] }
-        });
+        doc.autoTable({ head: [['Item', 'Loc', 'Actual', 'MC', 'Cajas T', 'BN#1', 'Sumar', 'Final']], body: rows, startY: 20, theme: 'grid', headStyles: { fillColor: [5, 150, 105] } });
         doc.save('Reporte_Entrada.pdf');
     }
 </script>

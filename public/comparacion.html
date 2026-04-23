@@ -91,6 +91,14 @@ tbody tr:hover { background: #faf5ff; }
 .no-wh-msg h2 { color: var(--red); margin: 0 0 10px; }
 .no-wh-msg p { color: #64748b; }
 
+/* MODAL LAPTOPS */
+.modal-lap { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:1000; overflow-y:auto; padding:30px; }
+.modal-lap.show { display:block; }
+.modal-lap-body { background:white; max-width:1100px; margin:0 auto; border-radius:16px; padding:30px; }
+.modal-lap-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px; }
+.modal-lap-header h2 { margin:0; font-size:18px; }
+.lap-sub { font-size:12px; color:#64748b; margin-top:4px; }
+
 /* ================================================================
    RESPONSIVE
    ================================================================ */
@@ -176,6 +184,7 @@ tbody tr:hover { background: #faf5ff; }
       <div class="header-actions">
         <button class="btn btn-green" onclick="exportarCSV()">📊 CSV</button>
         <button class="btn btn-red" onclick="exportarPDF()">📄 PDF</button>
+        <button class="btn" style="background:#7c3aed;color:white;" onclick="abrirLaptops()">🖥️ Comparar Laptops</button>
         <a href="index.html" class="btn btn-white">← Volver</a>
       </div>
     </div>
@@ -240,6 +249,40 @@ tbody tr:hover { background: #faf5ff; }
   </div>
 </div>
 
+<!-- MODAL LAPTOPS -->
+<div class="modal-lap" id="modal-lap">
+  <div class="modal-lap-body">
+    <div class="modal-lap-header">
+      <div>
+        <h2>🖥️ Comparación de Laptops</h2>
+        <div class="lap-sub">Stock Local vs. Columna SALINA (H) del CSV Maestro</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-green" onclick="exportarLaptopsCSV()">📊 CSV</button>
+        <button class="btn btn-red" onclick="exportarLaptopsPDF()">📄 PDF</button>
+        <button class="btn" style="background:#475569;color:white;" onclick="cerrarLaptops()">✕ Cerrar</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;"></th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">ITEM</th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">DESCRIPCIÓN</th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">LOC</th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:center;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">STOCK LOCAL</th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:center;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#7c3aed;text-transform:uppercase;">SALINA (H)</th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:center;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">DIFERENCIA</th>
+            <th style="background:#f8fafc;padding:12px 10px;text-align:left;border-bottom:2px solid #e2e8f0;font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;">ESTADO</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-lap"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
 let dataCompleta = [];
 let filtroActivo = 'todos';
@@ -254,7 +297,7 @@ async function cargar() {
       mostrarMensajeSinCSV();
       return;
     }
-    pintarStats(json.stats);
+    pintarStats();
     document.getElementById('loader').style.display = 'none';
     document.getElementById('tabla').style.display = '';
     renderTabla();
@@ -275,12 +318,18 @@ function mostrarMensajeSinCSV() {
   `;
 }
 
-function pintarStats(s) {
-  document.getElementById('s-total').innerText = s.total;
-  document.getElementById('s-match').innerText = s.coinciden;
-  document.getElementById('s-diff').innerText = s.difieren;
-  document.getElementById('s-missing').innerText = s.no_encontrados;
-  document.getElementById('s-found').innerText = s.encontrados;
+function pintarStats() {
+  // Aplicar las mismas exclusiones que la tabla principal
+  const filtrados = dataCompleta.filter(r => {
+    if ((r.cat || '').toUpperCase() === 'LAPTOP') return false;
+    if (!r.encontrado && (!r.desc || r.desc.trim() === '')) return false;
+    return true;
+  });
+  document.getElementById('s-total').innerText   = filtrados.length;
+  document.getElementById('s-match').innerText   = filtrados.filter(r => r.encontrado && r.diferencia === 0).length;
+  document.getElementById('s-diff').innerText    = filtrados.filter(r => r.encontrado && r.diferencia !== 0).length;
+  document.getElementById('s-missing').innerText = filtrados.filter(r => !r.encontrado).length;
+  document.getElementById('s-found').innerText   = filtrados.filter(r => r.encontrado).length;
 }
 
 function setFiltro(f) {
@@ -300,6 +349,11 @@ document.querySelectorAll('.stat-card').forEach(card => {
 function aplicarFiltros() {
   const q = (document.getElementById('buscador').value || '').toUpperCase();
   return dataCompleta.filter(row => {
+    // Excluir siempre LAPTOP de la comparación principal
+    if ((row.cat || '').toUpperCase() === 'LAPTOP') return false;
+    // Excluir "no encontrados" sin descripción (items sin datos)
+    if (!row.encontrado && (!row.desc || row.desc.trim() === '')) return false;
+
     if (q) {
       const match = (row.item && row.item.toString().toUpperCase().includes(q)) ||
                     (row.desc && row.desc.toUpperCase().includes(q)) ||
@@ -424,6 +478,101 @@ function exportarPDF() {
     }
   });
   doc.save(`Comparacion_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+// ================================================================
+// COMPARACIÓN DE LAPTOPS (Stock Local vs SALINA col H)
+// ================================================================
+function abrirLaptops() {
+  const laptops = dataCompleta.filter(r => {
+    if ((r.cat || '').toUpperCase() !== 'LAPTOP') return false;
+    // Solo las que NO coinciden (diferente o no en maestro)
+    if (r.salina !== null && (r.stockLocal - r.salina) === 0) return false;
+    return true;
+  });
+  if (laptops.length === 0) {
+    alert('No hay laptops en los datos o el CSV Maestro no está cargado.');
+    return;
+  }
+  const tbody = document.getElementById('tbody-lap');
+  tbody.innerHTML = laptops.map(r => {
+    const salina = r.salina !== null ? r.salina : null;
+    const dif = salina !== null ? (r.stockLocal - salina) : null;
+    let icon, diffHtml, statusHtml;
+    if (salina === null) {
+      icon = '❌'; diffHtml = '<span class="badge b-missing">N/A</span>';
+      statusHtml = '<span style="color:#94a3b8">✗ No en Maestro</span>';
+    } else if (dif === 0) {
+      icon = '✅'; diffHtml = '<span class="badge b-diff-ok">0</span>';
+      statusHtml = '<span style="color:#059669;font-weight:700">✓ Coincide</span>';
+    } else if (dif > 0) {
+      icon = '⚠️'; diffHtml = `<span class="badge b-diff-over">▲ +${dif}</span>`;
+      statusHtml = '<span style="color:#ea580c;font-weight:700">📈 Sobrante</span>';
+    } else {
+      icon = '⚠️'; diffHtml = `<span class="badge b-diff-under">▼ ${dif}</span>`;
+      statusHtml = '<span style="color:#dc2626;font-weight:700">📉 Faltante</span>';
+    }
+    return `<tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="padding:10px;text-align:center;">${icon}</td>
+      <td style="padding:10px;font-weight:700;color:#1e40af;">${r.item}</td>
+      <td style="padding:10px;">
+        <div style="font-size:13px;font-weight:600;color:#1e293b;">${r.desc}</div>
+        ${r.shortDesc ? `<div style="font-size:11px;color:#94a3b8;">${r.shortDesc}</div>` : ''}
+      </td>
+      <td style="padding:10px;font-weight:700;color:#b45309;font-size:12px;">${r.loc || '—'}</td>
+      <td style="padding:10px;text-align:center;"><span class="badge b-stock-local">${r.stockLocal}</span></td>
+      <td style="padding:10px;text-align:center;">${salina !== null ? `<span style="background:#f3e8ff;color:#7c3aed;padding:4px 8px;border-radius:5px;font-weight:700;">${salina}</span>` : '<span class="badge b-missing">—</span>'}</td>
+      <td style="padding:10px;text-align:center;">${diffHtml}</td>
+      <td style="padding:10px;">${statusHtml}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('modal-lap').classList.add('show');
+}
+
+function cerrarLaptops() {
+  document.getElementById('modal-lap').classList.remove('show');
+}
+
+// Cerrar modal al click fuera
+document.getElementById('modal-lap').addEventListener('click', function(e) {
+  if (e.target === this) cerrarLaptops();
+});
+
+function getLaptops() {
+  return dataCompleta.filter(r => (r.cat || '').toUpperCase() === 'LAPTOP');
+}
+
+function exportarLaptopsCSV() {
+  const rows = getLaptops();
+  let csv = 'ITEM,DESCRIPCION,LOC,STOCK_LOCAL,SALINA,DIFERENCIA,ESTADO\n';
+  rows.forEach(r => {
+    const dif = r.salina !== null ? (r.stockLocal - r.salina) : '';
+    let estado = r.salina === null ? 'NO_EN_MAESTRO' : dif === 0 ? 'COINCIDE' : dif > 0 ? 'SOBRANTE' : 'FALTANTE';
+    csv += `"${r.item}","${(r.desc||'').replace(/"/g,'""')}","${r.loc||''}",${r.stockLocal},${r.salina??''},${dif},${estado}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Laptops_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+function exportarLaptopsPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('l', 'mm', 'a4');
+  doc.setFontSize(13); doc.text('Comparación Laptops — Stock Local vs SALINA (Col H)', 14, 14);
+  doc.setFontSize(9); doc.text(`Generado: ${new Date().toLocaleString()}`, 14, 21);
+  const rows = getLaptops().map(r => {
+    const dif = r.salina !== null ? (r.stockLocal - r.salina) : '—';
+    const estado = r.salina === null ? 'NO EN MAESTRO' : dif === 0 ? 'COINCIDE' : dif > 0 ? `SOBRANTE +${dif}` : `FALTANTE ${dif}`;
+    return [r.item, (r.desc||'').substring(0,40), r.loc||'—', r.stockLocal, r.salina??'—', dif, estado];
+  });
+  doc.autoTable({
+    head: [['ITEM','DESCRIPCIÓN','LOC','STOCK LOCAL','SALINA','DIF','ESTADO']],
+    body: rows, startY: 26, styles: { fontSize: 8 },
+    headStyles: { fillColor: [124, 58, 237] }
+  });
+  doc.save(`Laptops_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
 cargar();

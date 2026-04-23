@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador de Pedidos - BetterDeals</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root { --primary:#1e40af; --green:#059669; --red:#ef4444; --orange:#f59e0b; --purple:#7c3aed; --bg:#f1f5f9; --border:#e2e8f0; --text:#1e293b; }
+*{box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px;}
+.card{background:white;max-width:1500px;margin:auto;padding:30px;border-radius:15px;box-shadow:0 10px 25px rgba(0,0,0,0.1);}
+
+.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--primary);padding-bottom:18px;margin-bottom:18px;flex-wrap:wrap;gap:12px;}
+.header h2{margin:5px 0 0;font-size:20px;}
+.header-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+.btn{padding:10px 16px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:6px;text-decoration:none;transition:0.15s;min-height:40px;white-space:nowrap;}
+.btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+.btn:disabled{opacity:0.45;pointer-events:none;}
+.btn-primary{background:var(--primary);color:white;}
+.btn-green{background:var(--green);color:white;}
+.btn-red{background:var(--red);color:white;}
+.btn-orange{background:var(--orange);color:#1e293b;}
+.btn-gray{background:#475569;color:white;}
+.btn-light{background:#e2e8f0;color:#475569;}
+.btn-lg{padding:13px 22px;font-size:14px;}
+
+/* STATUS CARDS */
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+.status-card{border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:12px;border:2px solid transparent;}
+.status-card.ok{background:#f0fdf4;border-color:#bbf7d0;}
+.status-card.warn{background:#fffbeb;border-color:#fde68a;}
+.status-card.err{background:#fef2f2;border-color:#fecaca;}
+.status-card.neutral{background:#f8fafc;border-color:var(--border);}
+.sc-icon{font-size:24px;}
+.sc-text .sc-title{font-weight:800;font-size:13px;}
+.sc-text .sc-sub{font-size:11px;color:#64748b;margin-top:2px;}
+
+/* UPLOAD */
+.upload-zone{border:2px dashed #cbd5e1;padding:16px;border-radius:10px;text-align:center;background:#f8fafc;cursor:pointer;transition:0.2s;margin-bottom:16px;}
+.upload-zone:hover{border-color:var(--primary);background:#eff6ff;}
+.upload-zone.loaded{border-color:var(--green);background:#f0fdf4;}
+
+/* REGLAS */
+.rules-bar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;padding:12px;background:#f8fafc;border-radius:8px;}
+.rule-pill{padding:4px 10px;border-radius:16px;font-size:10px;font-weight:700;}
+
+/* TOOLBAR */
+.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+
+/* SEARCH */
+.search-area{position:relative;margin-bottom:16px;}
+#search-input{width:100%;padding:13px 16px;border-radius:8px;border:2px solid var(--primary);font-size:14px;}
+#sug-box{position:absolute;background:white;width:100%;z-index:200;display:none;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.12);}
+.s-item{padding:11px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;}
+.s-item:hover{background:#eff6ff;}
+.s-meta{font-size:11px;color:#64748b;margin-top:3px;}
+.s-stocks{display:flex;gap:10px;margin-top:4px;}
+.s-stock-pill{padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;}
+
+/* COUNTERS */
+.counters{display:flex;gap:16px;}
+.cnt{text-align:center;}
+.cnt .n{font-size:26px;font-weight:800;line-height:1;}
+.cnt .l{font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;}
+
+/* TABLE */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:#f8fafc;padding:10px 9px;text-align:left;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid var(--border);white-space:nowrap;}
+td{padding:9px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+tbody tr:hover{background:#fafafa;}
+
+.cat-pill{padding:3px 7px;border-radius:4px;font-size:10px;font-weight:700;background:#e0e7ff;color:#3730a3;white-space:nowrap;}
+.cat-pill.manual{background:#fce7f3;color:#be185d;}
+.n-sacar{background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:6px;font-weight:800;font-size:15px;display:inline-block;min-width:36px;text-align:center;}
+.n-sal{background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:5px;font-weight:700;display:inline-block;min-width:28px;text-align:center;}
+.n-wh{background:#dcfce7;color:#166534;padding:3px 8px;border-radius:5px;font-weight:700;display:inline-block;min-width:28px;text-align:center;}
+.n-max{width:62px;padding:6px;border:2px solid var(--orange);border-radius:6px;text-align:center;font-weight:800;font-size:13px;background:#fffbeb;}
+.btn-del{color:var(--red);background:none;border:none;cursor:pointer;font-weight:800;font-size:16px;padding:2px 6px;}
+.foto-thumb{width:46px;height:46px;object-fit:contain;border-radius:5px;filter:contrast(1.08) saturate(1.1) brightness(1.02);}
+.foto-empty{width:46px;height:46px;background:#f1f5f9;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:15px;}
+.warn-stock{font-size:9px;color:var(--red);font-weight:700;display:block;margin-top:2px;}
+.empty-msg{text-align:center;padding:50px 20px;color:#94a3b8;}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:1000;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:white;border-radius:14px;padding:28px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}
+.modal-box h3{margin:0 0 18px;font-size:16px;}
+.mfield{margin-bottom:14px;}
+.mfield label{display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:5px;}
+.mfield input,.mfield select{width:100%;padding:11px;border:2px solid var(--border);border-radius:7px;font-size:14px;}
+.mfield input:focus,.mfield select:focus{border-color:var(--primary);outline:none;}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;}
+
+@media(max-width:768px){
+  body{padding:10px;}
+  .card{padding:16px;}
+  .status-grid{grid-template-columns:1fr;}
+  .header{flex-direction:column;}
+  .counters{gap:10px;}
+}
+</style>
+</head>
+<body>
+<div class="card">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div>
+      <a href="index.html" style="text-decoration:none;color:var(--primary);font-weight:700;font-size:13px;">⬅ VOLVER AL INVENTARIO</a>
+      <h2>🛒 Generador Automático de Pedidos</h2>
+    </div>
+    <div class="header-right">
+      <div class="counters">
+        <div class="cnt"><div class="n" id="cnt-total" style="color:var(--primary)">0</div><div class="l">Ítems</div></div>
+        <div class="cnt"><div class="n" id="cnt-units" style="color:var(--orange)">0</div><div class="l">Unidades</div></div>
+      </div>
+      <button class="btn btn-green btn-lg" onclick="exportarAlPicking()">📋 Exportar al Picking</button>
+      <button class="btn btn-red" onclick="exportarPDF()">📄 PDF</button>
+      <button class="btn btn-gray" onclick="exportarCSV()">📊 CSV</button>
+    </div>
+  </div>
+
+  <!-- STATUS CARDS -->
+  <div class="status-grid">
+    <div class="status-card neutral" id="card-pedidos">
+      <span class="sc-icon">📋</span>
+      <div class="sc-text">
+        <div class="sc-title" id="sc-pedidos-title">CSV de Pedidos</div>
+        <div class="sc-sub" id="sc-pedidos-sub">No cargado — sube el archivo para recordar los máximos</div>
+      </div>
+      <div style="margin-left:auto;display:flex;flex-direction:column;gap:6px;">
+        <input type="file" id="csvPedidos" accept=".csv" style="display:none" onchange="subirCSVPedidos(this)">
+        <button class="btn btn-orange" onclick="document.getElementById('csvPedidos').click()" style="font-size:11px;padding:7px 12px;">📤 Subir CSV</button>
+      </div>
+    </div>
+    <div class="status-card neutral" id="card-maestro">
+      <span class="sc-icon">🏢</span>
+      <div class="sc-text">
+        <div class="sc-title" id="sc-maestro-title">CSV Maestro (cantidades)</div>
+        <div class="sc-sub" id="sc-maestro-sub">Cargando...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- REGLAS -->
+  <div class="rules-bar">
+    <span style="font-size:11px;font-weight:700;color:#475569;align-self:center;">REGLAS ACTIVAS:</span>
+    <span class="rule-pill" style="background:#fce7f3;color:#be185d;">INK CARTRI · faltan &gt;2</span>
+    <span class="rule-pill" style="background:#e0e7ff;color:#3730a3;">PRINTER / TONER · falte 1+</span>
+    <span class="rule-pill" style="background:#dcfce7;color:#166534;">MOUSE · faltan 2+</span>
+    <span class="rule-pill" style="background:#fee2e2;color:#991b1b;">LAPTOP / MONITOR · excluidos</span>
+    <span class="rule-pill" style="background:#fef3c7;color:#92400e;">RESTO · déficit ≥ 30% del máx.</span>
+    <span class="rule-pill" style="background:#f1f5f9;color:#64748b;">Siempre: sacar ≤ bodega</span>
+  </div>
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <button class="btn btn-primary btn-lg" onclick="generarPicklist()" id="btn-generar" disabled>⚡ Generar Picklist</button>
+    <button class="btn btn-light" onclick="limpiarLista()" id="btn-limpiar">🗑 Limpiar Lista</button>
+    <span style="font-size:12px;color:#94a3b8;margin-left:6px;">— o agrega ítems manualmente →</span>
+  </div>
+
+  <!-- BUSCADOR MANUAL -->
+  <div class="search-area">
+    <input type="text" id="search-input" placeholder="🔍 Buscar ítem manualmente (código, nombre o descripción)..." autocomplete="off">
+    <div id="sug-box"></div>
+  </div>
+
+  <!-- TABLA RESULTADOS -->
+  <div class="table-wrap">
+    <div id="empty-msg" class="empty-msg">
+      <div style="font-size:44px;margin-bottom:12px;">🛒</div>
+      <div><b>Sube el CSV de Pedidos</b> para guardar los máximos,<br>luego presiona <b>⚡ Generar Picklist</b></div>
+    </div>
+    <table id="tabla" style="display:none">
+      <thead>
+        <tr>
+          <th>FOTO</th>
+          <th>CAT.</th>
+          <th>ITEM</th>
+          <th>DESCRIPCIÓN</th>
+          <th title="Editable - se guarda en servidor">MÁXIMO ✏️</th>
+          <th>TIENDA</th>
+          <th>BODEGA</th>
+          <th>A SACAR</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL AGREGAR MANUAL -->
+<div class="modal-overlay" id="modal-agregar">
+  <div class="modal-box">
+    <h3>➕ Agregar ítem manualmente</h3>
+    <div class="mfield">
+      <label>Ítem</label>
+      <input type="text" id="m-item" readonly style="background:#f8fafc;">
+    </div>
+    <div class="mfield">
+      <label>Descripción</label>
+      <input type="text" id="m-desc" readonly style="background:#f8fafc;">
+    </div>
+    <div class="mfield">
+      <label>Tienda actual (SALINA)</label>
+      <input type="text" id="m-sal" readonly style="background:#f8fafc;">
+    </div>
+    <div class="mfield">
+      <label>Bodega (WAREHOUSE)</label>
+      <input type="text" id="m-wh" readonly style="background:#f8fafc;">
+    </div>
+    <div class="mfield">
+      <label>MÁXIMO para este ítem</label>
+      <input type="number" id="m-max" min="1" value="1" style="border-color:var(--orange);background:#fffbeb;">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-light" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarAgregarManual()">✅ Agregar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================================================================
+// ESTADO GLOBAL
+// ================================================================
+let pedidosMap = {};    // item → {cat, desc, shortDesc, max}  ← del servidor
+let maestroMap = {};    // item → row del CSV maestro          ← del servidor
+let lista = [];         // filas del picklist actual
+let pedidosCargados = false;
+let maestroCargado = false;
+let pendingManual = null;
+
+const sInput = document.getElementById('search-input');
+const sugBox  = document.getElementById('sug-box');
+
+// ================================================================
+// REGLAS
+// ================================================================
+function aplicaRegla(cat, max, sal, wh) {
+    if (!cat || max <= 0 || wh <= 0) return false;
+    const falta = max - sal;
+    if (falta <= 0) return false;
+    const C = cat.toUpperCase().trim();
+    if (C === 'LAPTOP' || C === 'MONITOR') return false;
+    if (C === 'INK CARTRI') return falta > 2;
+    if (C === 'PRINTER' || C === 'TONER') return falta >= 1;
+    if (C === 'MOUSE') return falta >= 2;
+    return (falta / max) >= 0.30;
+}
+
+function calcularSacar(max, sal, wh) {
+    return Math.max(0, Math.min(max - sal, wh));
+}
+
+function getSALWH(item) {
+    const wh = maestroMap[item] || {};
+    return {
+        sal: parseInt(wh.SALINA)    || 0,
+        wh:  parseInt(wh.WAREHOUSE) || 0
+    };
+}
+
+// ================================================================
+// CARGA INICIAL
+// ================================================================
+async function init() {
+    await Promise.all([cargarPedidosData(), cargarMaestro()]);
+}
+
+async function cargarPedidosData() {
+    try {
+        const r = await fetch('/api/pedidos-data');
+        const d = await r.json();
+        if (d.loaded && d.items && Object.keys(d.items).length > 0) {
+            pedidosMap = d.items;
+            pedidosCargados = true;
+            const fecha = d.updatedAt ? new Date(d.updatedAt).toLocaleString() : '';
+            setCard('card-pedidos', 'ok', '📋', 'CSV de Pedidos cargado ✓',
+                `${d.total} ítems con máximos guardados · ${fecha}`);
+        } else {
+            setCard('card-pedidos', 'warn', '📋', 'CSV de Pedidos',
+                'No hay datos guardados — sube el archivo para comenzar');
+        }
+    } catch(e) {
+        setCard('card-pedidos', 'err', '📋', 'CSV de Pedidos', 'Error al cargar del servidor');
+    }
+    actualizarBotonGenerar();
+}
+
+async function cargarMaestro() {
+    try {
+        const r = await fetch('/api/warehouse-all');
+        const d = await r.json();
+        if (d.loaded && d.map) {
+            maestroMap = d.map;
+            maestroCargado = true;
+            setCard('card-maestro', 'ok', '🏢', 'CSV Maestro cargado ✓',
+                `${Object.keys(d.map).length} ítems · Tienda=SALINA · Bodega=WAREHOUSE`);
+        } else {
+            setCard('card-maestro', 'warn', '🏢', 'CSV Maestro no cargado',
+                'Súbelo desde la página principal (botón 📤 CSV Maestro)');
+        }
+    } catch(e) {
+        setCard('card-maestro', 'err', '🏢', 'CSV Maestro', 'Error de conexión');
+    }
+    actualizarBotonGenerar();
+}
+
+// ================================================================
+// SUBIR CSV PEDIDOS → guarda en servidor
+// ================================================================
+async function subirCSVPedidos(input) {
+    const file = input.files[0];
+    if (!file) return;
+    setCard('card-pedidos', 'neutral', '⏳', 'Subiendo...', file.name);
+    try {
+        const texto = await file.text();
+        const res = await fetch('/api/upload-pedidos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/csv' },
+            body: texto
+        });
+        const j = await res.json();
+        if (j.success) {
+            await cargarPedidosData(); // recarga del servidor
+        } else {
+            setCard('card-pedidos', 'err', '❌', 'Error al subir', j.error || '');
+        }
+    } catch(e) {
+        setCard('card-pedidos', 'err', '❌', 'Error', e.message);
+    }
+    input.value = '';
+}
+
+// ================================================================
+// GENERAR PICKLIST
+// ================================================================
+function generarPicklist() {
+    if (!pedidosCargados) return alert('Primero sube el CSV de Pedidos.');
+    if (!maestroCargado) return alert('El CSV Maestro no está disponible. Súbelo desde la página principal.');
+
+    lista = [];
+    for (const [item, pd] of Object.entries(pedidosMap)) {
+        const { sal, wh } = getSALWH(item);
+        if (!aplicaRegla(pd.cat, pd.max, sal, wh)) continue;
+        const sacar = calcularSacar(pd.max, sal, wh);
+        if (sacar <= 0) continue;
+        lista.push({ cat: pd.cat, item, desc: pd.desc, shortDesc: pd.shortDesc, max: pd.max, sal, wh, sacar });
+    }
+
+    lista.sort((a, b) => a.cat.localeCompare(b.cat) || a.item.localeCompare(b.item));
+    renderTabla();
+}
+
+// ================================================================
+// RENDER
+// ================================================================
+function renderTabla() {
+    const tbody = document.getElementById('tbody');
+    const tabla = document.getElementById('tabla');
+    const empty = document.getElementById('empty-msg');
+
+    if (lista.length === 0) {
+        tabla.style.display = 'none';
+        empty.style.display = 'block';
+        empty.innerHTML = '<div style="font-size:40px;margin-bottom:10px;">✅</div>No hay ítems que cumplan las reglas o la lista está vacía.';
+        actualizarContadores();
+        return;
+    }
+
+    tabla.style.display = 'table';
+    empty.style.display = 'none';
+    tbody.innerHTML = '';
+
+    lista.forEach((it, idx) => {
+        const warnWH = it.sacar >= it.wh
+            ? `<span class="warn-stock">⚠ Agota bodega</span>` : '';
+        tbody.innerHTML += `
+        <tr>
+          <td><div class="foto-empty" id="foto-pd-${it.item}">📦</div></td>
+          <td><span class="cat-pill${it.cat==='MANUAL'?' manual':''}">${it.cat}</span></td>
+          <td style="font-weight:700;color:var(--primary);">${it.item}</td>
+          <td>
+            <div style="font-size:13px;font-weight:600;color:#1e293b;">${it.desc}</div>
+            ${it.shortDesc ? `<div style="font-size:11px;color:#94a3b8;">${it.shortDesc}</div>` : ''}
+          </td>
+          <td>
+            <input type="number" class="n-max" value="${it.max}" min="1"
+              onchange="cambiarMax(${idx}, this.value)"
+              title="Editar máximo — se guarda en servidor">
+          </td>
+          <td><span class="n-sal">${it.sal}</span></td>
+          <td><span class="n-wh">${it.wh}</span>${warnWH}</td>
+          <td><span class="n-sacar">${it.sacar}</span></td>
+          <td><button class="btn-del" onclick="quitarFila(${idx})" title="Quitar de la lista">✕</button></td>
+        </tr>`;
+    });
+
+    actualizarContadores();
+    cargarFotos();
+}
+
+function actualizarContadores() {
+    document.getElementById('cnt-total').innerText  = lista.length;
+    document.getElementById('cnt-units').innerText  = lista.reduce((s, i) => s + i.sacar, 0);
+}
+
+// ================================================================
+// CAMBIAR MÁXIMO → recalcula y guarda en servidor
+// ================================================================
+function cambiarMax(idx, val) {
+    const nuevoMax = Math.max(1, parseInt(val) || 1);
+    lista[idx].max = nuevoMax;
+    const { sal, wh } = getSALWH(lista[idx].item);
+    lista[idx].sal = sal;
+    lista[idx].wh  = wh;
+    lista[idx].sacar = calcularSacar(nuevoMax, sal, wh);
+
+    // Guardar en servidor (no bloqueante)
+    fetch(`/api/pedidos-data/${encodeURIComponent(lista[idx].item)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ max: nuevoMax })
+    }).catch(() => {});
+
+    // También actualizar en pedidosMap local
+    if (pedidosMap[lista[idx].item]) pedidosMap[lista[idx].item].max = nuevoMax;
+
+    renderTabla();
+}
+
+function quitarFila(idx) {
+    lista.splice(idx, 1);
+    renderTabla();
+}
+
+function limpiarLista() {
+    if (lista.length === 0) return;
+    if (confirm('¿Limpiar toda la lista generada?')) { lista = []; renderTabla(); }
+}
+
+// ================================================================
+// BUSCADOR MANUAL
+// ================================================================
+sInput.addEventListener('input', async () => {
+    const q = sInput.value.trim();
+    if (q.length < 2) { sugBox.style.display = 'none'; return; }
+    try {
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        sugBox.innerHTML = '';
+        data.forEach(i => {
+            const { sal, wh } = getSALWH(i.ITEM);
+            const enPedidos = pedidosMap[i.ITEM];
+            const div = document.createElement('div');
+            div.className = 's-item';
+            div.innerHTML = `
+              <div><b>${i.ITEM}</b> — ${i.Description}</div>
+              <div class="s-meta">${i['short desc'] || ''}</div>
+              <div class="s-stocks">
+                <span class="s-stock-pill" style="background:#dbeafe;color:#1e40af;">Tienda: ${sal}</span>
+                <span class="s-stock-pill" style="background:#dcfce7;color:#166534;">Bodega: ${wh}</span>
+                ${enPedidos ? `<span class="s-stock-pill" style="background:#fef3c7;color:#92400e;">Máx: ${enPedidos.max}</span>` : ''}
+              </div>`;
+            div.onclick = () => abrirModalManual(i, sal, wh, enPedidos);
+            sugBox.appendChild(div);
+        });
+        sugBox.style.display = data.length ? 'block' : 'none';
+    } catch(e) {}
+});
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.search-area')) sugBox.style.display = 'none';
+});
+
+function abrirModalManual(info, sal, wh, enPedidos) {
+    sugBox.style.display = 'none';
+    sInput.value = '';
+    pendingManual = { item: info.ITEM, desc: info.Description, shortDesc: info['short desc'] || '', cat: info.categoria || 'MANUAL', sal, wh };
+    document.getElementById('m-item').value = info.ITEM;
+    document.getElementById('m-desc').value = info.Description + (info['short desc'] ? ' · ' + info['short desc'] : '');
+    document.getElementById('m-sal').value  = sal;
+    document.getElementById('m-wh').value   = wh;
+    document.getElementById('m-max').value  = enPedidos ? enPedidos.max : 1;
+    document.getElementById('modal-agregar').classList.add('show');
+}
+
+function cerrarModal() {
+    document.getElementById('modal-agregar').classList.remove('show');
+    pendingManual = null;
+}
+
+async function confirmarAgregarManual() {
+    if (!pendingManual) return;
+    const max = Math.max(1, parseInt(document.getElementById('m-max').value) || 1);
+    const { item, desc, shortDesc, cat, sal, wh } = pendingManual;
+
+    // Guardar en servidor
+    await fetch('/api/pedidos-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item, cat, desc, shortDesc, max })
+    }).catch(() => {});
+
+    // Actualizar local
+    pedidosMap[item] = { cat, desc, shortDesc, max };
+
+    // Agregar a lista si cumple regla o si no hay regla aplicable, agregar directo
+    if (lista.find(x => x.item === item)) {
+        cerrarModal();
+        return alert('Este ítem ya está en la lista.');
+    }
+    const sacar = calcularSacar(max, sal, wh);
+    lista.push({ cat, item, desc, shortDesc, max, sal, wh, sacar: Math.max(0, sacar) });
+    lista.sort((a, b) => a.cat.localeCompare(b.cat) || a.item.localeCompare(b.item));
+    renderTabla();
+    cerrarModal();
+}
+
+// ================================================================
+// FOTOS
+// ================================================================
+async function cargarFotos() {
+    for (const it of lista) {
+        const el = document.getElementById('foto-pd-' + it.item);
+        if (!el) continue;
+        try {
+            const r = await fetch(`/api/foto/${encodeURIComponent(it.item)}`);
+            const d = await r.json();
+            if (d.found) el.outerHTML = `<img class="foto-thumb" id="foto-pd-${it.item}" src="${d.url}?t=${Date.now()}" alt="${it.item}">`;
+        } catch(e) {}
+    }
+}
+
+// ================================================================
+// EXPORTAR AL PICKING
+// ================================================================
+async function exportarAlPicking() {
+    const activos = lista.filter(it => it.sacar > 0);
+    if (activos.length === 0) return alert('No hay ítems con unidades a sacar.');
+
+    const btn = document.querySelector('[onclick="exportarAlPicking()"]');
+    const textoOriginal = btn.innerHTML;
+    btn.innerHTML = '⏳ Preparando...';
+    btn.disabled = true;
+
+    try {
+        // Para cada ítem buscar loc y mc_val en el inventario local
+        const pickingData = [];
+        for (const it of activos) {
+            let loc = '', mc_val = 0, stockActual = it.wh;
+            try {
+                const res = await fetch(`/search?q=${encodeURIComponent(it.item)}`);
+                const data = await res.json();
+                const info = data.find(x => x.ITEM.toString().trim() === it.item.toString().trim());
+                if (info) {
+                    loc         = info.loc || '';
+                    mc_val      = parseInt(info.MC) || 0;
+                    stockActual = parseInt(info.STOCK) || it.wh;
+                }
+            } catch(e) {}
+
+            pickingData.push({
+                item:         it.item,
+                desc:         it.desc,
+                shortDesc:    it.shortDesc,
+                loc:          loc,
+                stockActual:  stockActual,
+                mc_val:       mc_val,
+                cant_a_sacar: it.sacar,
+                checked:      false
+            });
+        }
+
+        // 1. Guardar en localStorage
+        localStorage.setItem('picking_data', JSON.stringify(pickingData));
+
+        // 2. Subir al servidor de sync ANTES de navegar
+        //    Así cuando picking.html conecte SSE recibirá esta misma lista
+        await fetch('/api/sync/picking', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: pickingData, deviceId: 'pedidos-export' })
+        }).catch(() => {});
+
+        // 3. Navegar
+        window.location.href = 'picking.html';
+
+    } catch(e) {
+        alert('❌ Error al preparar el picking: ' + e.message);
+        btn.innerHTML = textoOriginal;
+        btn.disabled = false;
+    }
+}
+
+// ================================================================
+// EXPORTAR CSV / PDF
+// ================================================================
+function exportarCSV() {
+    if (!lista.length) return alert('Lista vacía.');
+    let csv = 'CATEGORIA,ITEM,DESCRIPCION,SHORT_DESC,MAXIMO,TIENDA,BODEGA,A_SACAR\n';
+    lista.forEach(r => {
+        csv += `"${r.cat}","${r.item}","${r.desc.replace(/"/g,'""')}","${(r.shortDesc||'').replace(/"/g,'""')}",${r.max},${r.sal},${r.wh},${r.sacar}\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Pedido_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+}
+
+function exportarPDF() {
+    if (!lista.length) return alert('Lista vacía.');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l', 'mm', 'a4');
+    doc.setFontSize(13);
+    doc.text('Pedido Automático — BetterDeals', 14, 14);
+    doc.setFontSize(9);
+    doc.text(`${new Date().toLocaleString()} · ${lista.length} ítems · ${lista.reduce((s,i)=>s+i.sacar,0)} unidades`, 14, 21);
+    doc.autoTable({
+        head: [['CATEGORÍA','ITEM','DESCRIPCIÓN','MÁXIMO','TIENDA','BODEGA','A SACAR']],
+        body: lista.map(r => [r.cat, r.item, r.desc.substring(0,40), r.max, r.sal, r.wh, r.sacar]),
+        startY: 26, styles: { fontSize: 8 },
+        headStyles: { fillColor: [30, 64, 175] },
+        columnStyles: { 6: { fillColor: [254, 243, 199], fontStyle: 'bold' } }
+    });
+    doc.save(`Pedido_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+// ================================================================
+// HELPERS
+// ================================================================
+function setCard(id, estado, icon, title, sub) {
+    const card = document.getElementById(id);
+    card.className = `status-card ${estado}`;
+    card.querySelector('.sc-icon').innerText = icon;
+    card.querySelector('.sc-title').innerText = title;
+    card.querySelector('.sc-sub').innerText   = sub;
+}
+
+function actualizarBotonGenerar() {
+    const ok = pedidosCargados && maestroCargado;
+    document.getElementById('btn-generar').disabled = !ok;
+}
+
+// ================================================================
+// INICIO
+// ================================================================
+window.onload = init;
+</script>
+</body>
+</html>
