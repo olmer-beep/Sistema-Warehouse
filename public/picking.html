@@ -136,6 +136,7 @@ async function buscarYAgregar(codigo, cantidad, locSugerida, esCSV) {
         itemsPicking.push({
             item: info.ITEM,
             desc: info.Description,
+            shortDesc: info['short desc'] || '',
             loc: locSugerida || info.loc || info.location || "",
             stockActual: parseInt(info.STOCK) || 0,
             mc_val: parseInt(info.MC) || 0,
@@ -185,7 +186,7 @@ function renderTable() {
             <td><input type="checkbox" ${it.checked ? 'checked' : ''} onchange="itemsPicking[${idx}].checked=this.checked; guardarLocal(); renderTable()"></td>
             <td><div class="foto-empty" id="foto-p-${it.item}">📦</div></td>
             <td><b>${it.item}</b></td>
-            <td style="font-size:10px; color:#64748b;">${it.desc}</td>
+            <td><span style="font-size:13px; font-weight:600; color:#1e293b;">${it.desc}</span>${it.shortDesc ? `<div style="font-size:11px; color:#64748b; margin-top:2px;">${it.shortDesc}</div>` : ''}</td>
             <td><input type="text" class="loc-input" value="${it.loc}" onchange="itemsPicking[${idx}].loc=this.value.toUpperCase(); guardarLocal()"></td>
             <td style="color:#64748b; font-weight:bold;">${it.stockActual}</td>
             <td><input type="number" class="input-qty input-mc" value="${it.mc_val}" onchange="itemsPicking[${idx}].mc_val=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
