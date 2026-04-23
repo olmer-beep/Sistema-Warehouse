@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Entrada Pro - BetterDeals</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -24,13 +25,16 @@
         .btn-limpiar { background: #e2e8f0; color: #475569; }
         table { width: 100%; border-collapse: collapse; }
         th { background: #f8fafc; padding: 12px; text-align: left; font-size: 11px; color: #64748b; text-transform: uppercase; border-bottom: 1px solid var(--border); }
-        td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+        td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
         .input-qty { width: 85px; padding: 8px; border: 2px solid #cbd5e1; border-radius: 6px; text-align: center; font-weight: 800; }
         .input-mc { border-color: var(--accent) !important; color: var(--accent); }
         .loc-input { width: 100px; padding: 8px; border: 2px solid #f59e0b; border-radius: 6px; font-weight: bold; text-align: center; text-transform: uppercase; }
         .stock-new { background: #dcfce7; color: #166534; padding: 5px 10px; border-radius: 6px; font-weight: 800; font-size: 15px; }
         .btn-confirm { background: var(--primary); color: white; padding: 20px; border: none; border-radius: 10px; font-weight: 800; cursor: pointer; width: 100%; margin-top: 25px; font-size: 16px; display: none; text-transform: uppercase;}
         .btn-del { color: #ef4444; background: none; border: none; font-weight: 800; cursor: pointer; font-size: 18px; }
+        /* ── FOTO (único bloque nuevo) ── */
+        .foto-thumb { width: 60px; height: 60px; object-fit: contain; border-radius: 6px; background: #f8fafc; display: block; filter: contrast(1.08) saturate(1.1) brightness(1.02); }
+        .foto-empty { width: 60px; height: 60px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-size: 20px; }
     </style>
 </head>
 <body>
@@ -63,24 +67,27 @@
         <button class="btn btn-limpiar" onclick="limpiarLista()">🗑️ LIMPIAR TODA LA LISTA</button>
     </div>
 
-    <table>
-        <thead>
-            <tr>
-                <th>OK</th>
-                <th>ITEM</th>
-                <th>DESCRIPCIÓN</th>
-                <th>LOCACIÓN</th>
-                <th>STOCK ACTUAL</th>
-                <th>VALOR MC</th>
-                <th style="color:var(--primary)">CAJAS (T)</th>
-                <th style="color:var(--accent)">BN#1 / CAJA ABIERTA</th>
-                <th style="color:var(--primary)">CANT. A SUMAR</th>
-                <th>STOCK FINAL</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody id="lista-body"></tbody>
-    </table>
+    <div style="overflow-x:auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>OK</th>
+                    <th>FOTO</th>
+                    <th>ITEM</th>
+                    <th>DESCRIPCIÓN</th>
+                    <th>LOCACIÓN</th>
+                    <th>STOCK ACTUAL</th>
+                    <th>VALOR MC</th>
+                    <th style="color:var(--primary)">CAJAS (T)</th>
+                    <th style="color:var(--accent)">BN#1 / CAJA ABIERTA</th>
+                    <th style="color:var(--primary)">CANT. A SUMAR</th>
+                    <th>STOCK FINAL</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="lista-body"></tbody>
+        </table>
+    </div>
 
     <button id="btn-confirm-final" class="btn-confirm" onclick="confirmarEntrada()">🚀 CONFIRMAR E INYECTAR AL EXCEL MAESTRO</button>
 </div>
@@ -185,6 +192,7 @@
             body.innerHTML += `
                 <tr style="${it.checked ? 'background:#f0fdf4':''}">
                     <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="itemsEntrada[${idx}].checked=this.checked; guardarLocal(); renderTable()"></td>
+                    <td><div class="foto-empty" id="foto-e-${it.item}">📦</div></td>
                     <td><b>${it.item}</b></td>
                     <td style="font-size:10px; color:#64748b;">${it.desc}</td>
                     <td><input type="text" class="loc-input" value="${it.loc}" onchange="itemsEntrada[${idx}].loc=this.value.toUpperCase(); guardarLocal()"></td>
@@ -200,6 +208,22 @@
         document.getElementById('count-total').innerText = itemsEntrada.length;
         document.getElementById('btn-confirm-final').style.display = itemsEntrada.length > 0 ? 'block' : 'none';
         guardarLocal();
+        cargarFotosTabla();
+    }
+
+    // ── FUNCIÓN NUEVA: carga fotos en segundo plano sin tocar la tabla ──
+    async function cargarFotosTabla() {
+        for (const it of itemsEntrada) {
+            const el = document.getElementById('foto-e-' + it.item);
+            if (!el) continue;
+            try {
+                const res = await fetch(`/api/foto/${encodeURIComponent(it.item)}`);
+                const data = await res.json();
+                if (data.found) {
+                    el.outerHTML = `<img class="foto-thumb" id="foto-e-${it.item}" src="${data.url}?t=${Date.now()}" alt="${it.item}">`;
+                }
+            } catch(e) {}
+        }
     }
 
     async function confirmarEntrada() {

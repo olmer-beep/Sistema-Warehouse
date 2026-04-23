@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#7c3aed">
+<title>Comparación de Inventarios - BetterDeals</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root {
+  --primary: #1e40af;
+  --purple: #7c3aed;
+  --bg: #f1f5f9;
+  --border: #e2e8f0;
+  --green: #10b981;
+  --red: #ef4444;
+  --orange: #f59e0b;
+  --text: #1e293b;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+.container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; }
+
+/* HEADER */
+.header { background: linear-gradient(135deg, var(--purple) 0%, #a78bfa 100%); color: white; padding: 30px 35px; }
+.header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+.title-block h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: 0.5px; }
+.title-block .sub { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+.header-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+.btn { padding: 10px 16px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 12px; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; transition: 0.2s; min-height: 42px; justify-content: center; }
+.btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.btn:active { transform: translateY(0); }
+.btn-white { background: white; color: var(--purple); }
+.btn-green { background: var(--green); color: white; }
+.btn-red { background: var(--red); color: white; }
+
+/* STATS */
+.stats-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; padding: 25px 35px; background: #f8fafc; border-bottom: 1px solid var(--border); }
+.stat-card { background: white; border-radius: 12px; padding: 18px; border: 1px solid var(--border); text-align: center; transition: 0.2s; cursor: pointer; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.stat-card.active { border: 2px solid var(--primary); box-shadow: 0 4px 12px rgba(30,64,175,0.25); }
+.stat-card .num { font-size: 32px; font-weight: 800; line-height: 1; }
+.stat-card .lbl { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 8px; letter-spacing: 0.5px; }
+.stat-total .num { color: var(--primary); }
+.stat-match .num { color: var(--green); }
+.stat-diff .num { color: var(--orange); }
+.stat-missing .num { color: var(--red); }
+.stat-extra .num { color: #0ea5e9; }
+
+/* CONTROLS */
+.controls { padding: 20px 35px; display: flex; gap: 15px; align-items: center; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.search-box { flex: 1; min-width: 250px; position: relative; }
+.search-box input { width: 100%; padding: 12px 16px 12px 42px; border-radius: 8px; border: 2px solid var(--border); font-size: 14px; outline: none; }
+.search-box input:focus { border-color: var(--purple); }
+.search-box::before { content: "🔍"; position: absolute; left: 14px; top: 50%; transform: translateY(-50%); }
+.filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill { padding: 8px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; cursor: pointer; border: 2px solid var(--border); background: white; transition: 0.2s; white-space: nowrap; }
+.pill:hover { border-color: var(--purple); }
+.pill.active { background: var(--purple); color: white; border-color: var(--purple); }
+
+/* TABLE */
+.table-wrap { overflow-x: auto; padding: 0 0 25px 0; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #f8fafc; padding: 14px 12px; text-align: left; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; border-bottom: 2px solid var(--border); letter-spacing: 0.5px; white-space: nowrap; }
+td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+tbody tr:hover { background: #faf5ff; }
+.col-center { text-align: center; }
+.item-cell { font-weight: 700; color: var(--primary); }
+.desc-cell { color: #475569; max-width: 280px; }
+.loc-cell { font-weight: 700; color: #b45309; font-size: 12px; }
+/* FOTO */
+.foto-thumb { width: 52px; height: 52px; object-fit: contain; border-radius: 6px; background: #f8fafc; display: block; filter: contrast(1.08) saturate(1.1) brightness(1.02); }
+.foto-empty { width: 52px; height: 52px; background: #f1f5f9; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-size: 18px; }
+
+.badge { padding: 5px 10px; border-radius: 6px; font-weight: 800; display: inline-block; min-width: 36px; text-align: center; font-size: 13px; }
+.b-stock-local { background: #dbeafe; color: #1e40af; }
+.b-stock-wh { background: #fef3c7; color: #92400e; }
+.b-diff-ok { background: #dcfce7; color: #166534; }
+.b-diff-over { background: #fed7aa; color: #9a3412; }
+.b-diff-under { background: #fecaca; color: #991b1b; }
+.b-missing { background: #e2e8f0; color: #475569; font-style: italic; }
+
+.empty-msg { text-align: center; padding: 60px 20px; color: #94a3b8; font-size: 14px; }
+.loading { text-align: center; padding: 60px 20px; color: var(--purple); font-weight: 700; }
+.no-wh-msg { padding: 60px 40px; text-align: center; }
+.no-wh-msg .icon { font-size: 64px; margin-bottom: 20px; }
+.no-wh-msg h2 { color: var(--red); margin: 0 0 10px; }
+.no-wh-msg p { color: #64748b; }
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+/* TABLET GRANDE (hasta 1100px) */
+@media (max-width: 1100px) {
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+  .stat-card .num { font-size: 28px; }
+}
+
+/* TABLET (hasta 900px) */
+@media (max-width: 900px) {
+  body { padding: 14px; }
+  .container { border-radius: 14px; }
+  .header { padding: 22px 25px; }
+  .title-block h1 { font-size: 20px; }
+  .stats-grid { padding: 20px 25px; gap: 10px; }
+  .controls { padding: 16px 25px; }
+  .desc-cell { max-width: 180px; }
+  td, th { padding: 10px 8px; font-size: 12px; }
+}
+
+/* MÓVIL GRANDE (hasta 700px) */
+@media (max-width: 700px) {
+  body { padding: 10px; }
+  .container { border-radius: 12px; }
+  .header { padding: 18px; }
+  .header-top { flex-direction: column; align-items: stretch; }
+  .title-block h1 { font-size: 18px; }
+  .title-block .sub { font-size: 12px; }
+  .header-actions { justify-content: stretch; }
+  .header-actions .btn { flex: 1; font-size: 11px; padding: 9px 10px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); padding: 16px; gap: 8px; }
+  .stat-card { padding: 12px; }
+  .stat-card .num { font-size: 24px; }
+  .stat-card .lbl { font-size: 10px; }
+  .controls { padding: 14px 16px; gap: 10px; }
+  .filter-pills { width: 100%; overflow-x: auto; padding-bottom: 4px; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .pill { padding: 7px 12px; font-size: 11px; }
+}
+
+/* MÓVIL PEQUEÑO (hasta 560px) - TABLA SE CONVIERTE EN TARJETAS */
+@media (max-width: 560px) {
+  body { padding: 6px; }
+  .container { border-radius: 10px; }
+  .header { padding: 14px; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); padding: 12px; }
+  .stat-card { padding: 10px; }
+  .stat-card .num { font-size: 22px; }
+  .stat-card .lbl { font-size: 9px; }
+  .controls { padding: 12px; }
+  .table-wrap { padding: 12px; }
+  /* Transform table to cards */
+  table, thead, tbody, tr, td { display: block; width: 100%; }
+  thead { display: none; }
+  tr { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  tr:hover { background: white; }
+  td { padding: 6px 0; border: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  td::before {
+    content: attr(data-label);
+    font-weight: 800;
+    color: #64748b;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  td.desc-cell { max-width: none; flex-direction: column; align-items: stretch; text-align: left; padding: 8px 0; border-top: 1px solid #f1f5f9; margin-top: 4px; }
+  td.desc-cell::before { margin-bottom: 4px; }
+  td.col-center { text-align: right; }
+  td[data-label="Estado"] { border-top: 1px solid #f1f5f9; padding-top: 10px; margin-top: 6px; flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-top">
+      <div class="title-block">
+        <h1>⚖️ Comparación de Inventarios</h1>
+        <div class="sub">Tu Stock Local vs. Columna WAREHOUSE (I) del CSV Maestro</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-green" onclick="exportarCSV()">📊 CSV</button>
+        <button class="btn btn-red" onclick="exportarPDF()">📄 PDF</button>
+        <a href="index.html" class="btn btn-white">← Volver</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="stats-grid" id="stats-area">
+    <div class="stat-card stat-total active" data-filter="todos">
+      <div class="num" id="s-total">0</div>
+      <div class="lbl">Total Items</div>
+    </div>
+    <div class="stat-card stat-match" data-filter="coinciden">
+      <div class="num" id="s-match">0</div>
+      <div class="lbl">✓ Coinciden</div>
+    </div>
+    <div class="stat-card stat-diff" data-filter="difieren">
+      <div class="num" id="s-diff">0</div>
+      <div class="lbl">⚠ Diferencia</div>
+    </div>
+    <div class="stat-card stat-missing" data-filter="no_encontrados">
+      <div class="num" id="s-missing">0</div>
+      <div class="lbl">✗ No Maestro</div>
+    </div>
+    <div class="stat-card stat-extra" data-filter="encontrados">
+      <div class="num" id="s-found">0</div>
+      <div class="lbl">📋 Identificados</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="search-box">
+      <input type="text" id="buscador" placeholder="Buscar ITEM o descripción..." oninput="renderTabla()">
+    </div>
+    <div class="filter-pills">
+      <span class="pill active" data-filter="todos" onclick="setFiltro('todos')">Todos</span>
+      <span class="pill" data-filter="difieren" onclick="setFiltro('difieren')">⚠ Diferencias</span>
+      <span class="pill" data-filter="faltante" onclick="setFiltro('faltante')">📉 Faltante</span>
+      <span class="pill" data-filter="sobrante" onclick="setFiltro('sobrante')">📈 Sobrante</span>
+      <span class="pill" data-filter="coinciden" onclick="setFiltro('coinciden')">✓ Coinciden</span>
+      <span class="pill" data-filter="no_encontrados" onclick="setFiltro('no_encontrados')">✗ No Maestro</span>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div id="loader" class="loading">⏳ Cargando comparación...</div>
+    <table id="tabla" style="display:none">
+      <thead>
+        <tr>
+          <th></th>
+          <th>FOTO</th>
+          <th>ITEM</th>
+          <th>DESCRIPCIÓN</th>
+          <th>LOC</th>
+          <th class="col-center">STOCK LOCAL</th>
+          <th class="col-center">WAREHOUSE (I)</th>
+          <th class="col-center">DIFERENCIA</th>
+          <th>ESTADO</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div id="empty" class="empty-msg" style="display:none;">Sin resultados con el filtro actual</div>
+  </div>
+</div>
+
+<script>
+let dataCompleta = [];
+let filtroActivo = 'todos';
+
+async function cargar() {
+  try {
+    const res = await fetch('/api/comparacion');
+    if (!res.ok) throw new Error('Error al cargar datos');
+    const json = await res.json();
+    dataCompleta = json.items || [];
+    if (dataCompleta.length === 0 || dataCompleta.every(d => !d.encontrado)) {
+      mostrarMensajeSinCSV();
+      return;
+    }
+    pintarStats(json.stats);
+    document.getElementById('loader').style.display = 'none';
+    document.getElementById('tabla').style.display = '';
+    renderTabla();
+  } catch (e) {
+    document.getElementById('loader').innerHTML = '❌ Error: ' + e.message;
+  }
+}
+
+function mostrarMensajeSinCSV() {
+  document.getElementById('loader').style.display = 'none';
+  document.querySelector('.table-wrap').innerHTML = `
+    <div class="no-wh-msg">
+      <div class="icon">📤</div>
+      <h2>CSV Maestro no cargado</h2>
+      <p>Para poder comparar, primero sube el archivo <b>INVENTORY_WAREHOUSE_COUTER_P.csv</b>.</p>
+      <p style="margin-top:20px;"><a href="index.html" class="btn btn-red">← Volver al inicio</a></p>
+    </div>
+  `;
+}
+
+function pintarStats(s) {
+  document.getElementById('s-total').innerText = s.total;
+  document.getElementById('s-match').innerText = s.coinciden;
+  document.getElementById('s-diff').innerText = s.difieren;
+  document.getElementById('s-missing').innerText = s.no_encontrados;
+  document.getElementById('s-found').innerText = s.encontrados;
+}
+
+function setFiltro(f) {
+  filtroActivo = f;
+  document.querySelectorAll('.pill').forEach(p => p.classList.toggle('active', p.dataset.filter === f));
+  document.querySelectorAll('.stat-card').forEach(c => c.classList.toggle('active', c.dataset.filter === f));
+  renderTabla();
+}
+
+document.querySelectorAll('.stat-card').forEach(card => {
+  card.addEventListener('click', () => {
+    const f = card.dataset.filter;
+    if (f) setFiltro(f);
+  });
+});
+
+function aplicarFiltros() {
+  const q = (document.getElementById('buscador').value || '').toUpperCase();
+  return dataCompleta.filter(row => {
+    if (q) {
+      const match = (row.item && row.item.toString().toUpperCase().includes(q)) ||
+                    (row.desc && row.desc.toUpperCase().includes(q)) ||
+                    (row.shortDesc && row.shortDesc.toUpperCase().includes(q));
+      if (!match) return false;
+    }
+    switch (filtroActivo) {
+      case 'coinciden': return row.encontrado && row.diferencia === 0;
+      case 'difieren': return row.encontrado && row.diferencia !== 0;
+      case 'faltante': return row.encontrado && row.diferencia < 0;
+      case 'sobrante': return row.encontrado && row.diferencia > 0;
+      case 'no_encontrados': return !row.encontrado;
+      case 'encontrados': return row.encontrado;
+      default: return true;
+    }
+  });
+}
+
+function renderTabla() {
+  const rows = aplicarFiltros();
+  const tbody = document.getElementById('tbody');
+  const empty = document.getElementById('empty');
+  if (rows.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  tbody.innerHTML = rows.map(r => {
+    let diffHtml, statusHtml, icon;
+    if (!r.encontrado) {
+      diffHtml = '<span class="badge b-missing">N/A</span>';
+      statusHtml = '<span style="color:#94a3b8">✗ No en Maestro</span>';
+      icon = '❌';
+    } else if (r.diferencia === 0) {
+      diffHtml = '<span class="badge b-diff-ok">0</span>';
+      statusHtml = '<span style="color:#059669; font-weight:700">✓ Coincide</span>';
+      icon = '✅';
+    } else if (r.diferencia > 0) {
+      diffHtml = `<span class="badge b-diff-over">▲ +${r.diferencia}</span>`;
+      statusHtml = '<span style="color:#ea580c; font-weight:700">📈 Sobrante</span>';
+      icon = '⚠️';
+    } else {
+      diffHtml = `<span class="badge b-diff-under">▼ ${r.diferencia}</span>`;
+      statusHtml = '<span style="color:#dc2626; font-weight:700">📉 Faltante</span>';
+      icon = '⚠️';
+    }
+    return `<tr>
+      <td data-label="" class="col-center">${icon}</td>
+      <td data-label="Foto"><div class="foto-empty" id="foto-c-${r.item}">📦</div></td>
+      <td data-label="Item" class="item-cell">${r.item}</td>
+      <td data-label="Descripción" class="desc-cell">${r.desc}${r.shortDesc ? `<div style="font-size:11px; color:#94a3b8; margin-top:2px;">${r.shortDesc}</div>` : ''}</td>
+      <td data-label="Loc" class="loc-cell">${r.loc || '—'}</td>
+      <td data-label="Stock Local" class="col-center"><span class="badge b-stock-local">${r.stockLocal}</span></td>
+      <td data-label="Warehouse (I)" class="col-center">${r.encontrado ? `<span class="badge b-stock-wh">${r.stockWarehouse}</span>` : '<span class="badge b-missing">—</span>'}</td>
+      <td data-label="Diferencia" class="col-center">${diffHtml}</td>
+      <td data-label="Estado">${statusHtml}</td>
+    </tr>`;
+  }).join('');
+  cargarFotosTabla(rows);
+}
+
+async function cargarFotosTabla(rows) {
+  for (const r of rows) {
+    const el = document.getElementById('foto-c-' + r.item);
+    if (!el) continue;
+    try {
+      const res = await fetch(`/api/foto/${encodeURIComponent(r.item)}`);
+      const data = await res.json();
+      if (data.found) {
+        el.outerHTML = `<img class="foto-thumb" id="foto-c-${r.item}" src="${data.url}?t=${Date.now()}" alt="${r.item}">`;
+      }
+    } catch(e) {}
+  }
+}
+
+function exportarCSV() {
+  const rows = aplicarFiltros();
+  let csv = 'ITEM,DESCRIPCION,SHORT_DESC,LOC,STOCK_LOCAL,STOCK_WAREHOUSE,DIFERENCIA,ESTADO\n';
+  rows.forEach(r => {
+    let estado;
+    if (!r.encontrado) estado = 'NO_EN_MAESTRO';
+    else if (r.diferencia === 0) estado = 'COINCIDE';
+    else if (r.diferencia > 0) estado = 'SOBRANTE_LOCAL';
+    else estado = 'FALTANTE_LOCAL';
+    csv += `"${r.item}","${(r.desc||'').replace(/"/g,'""')}","${(r.shortDesc||'').replace(/"/g,'""')}","${r.loc||''}",${r.stockLocal},${r.stockWarehouse ?? ''},${r.diferencia ?? ''},${estado}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Comparacion_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+}
+
+function exportarPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('l', 'mm', 'a4');
+  doc.setFontSize(14);
+  doc.text('Comparación: Stock Local vs Warehouse (Col. I) - BetterDeals', 14, 15);
+  doc.setFontSize(9);
+  doc.text(`Generado: ${new Date().toLocaleString()}  ·  Filtro: ${filtroActivo}`, 14, 22);
+  const rows = aplicarFiltros();
+  const body = rows.map(r => {
+    let estado;
+    if (!r.encontrado) estado = 'NO EN MAESTRO';
+    else if (r.diferencia === 0) estado = 'COINCIDE';
+    else if (r.diferencia > 0) estado = `SOBRANTE +${r.diferencia}`;
+    else estado = `FALTANTE ${r.diferencia}`;
+    return [r.item, (r.desc||'').substring(0, 40), r.loc || '—', r.stockLocal, r.encontrado ? r.stockWarehouse : '—', r.encontrado ? r.diferencia : '—', estado];
+  });
+  doc.autoTable({
+    head: [['ITEM', 'DESCRIPCIÓN', 'LOC', 'STOCK LOCAL', 'WAREHOUSE', 'DIF', 'ESTADO']],
+    body: body, startY: 28, styles: { fontSize: 8 }, headStyles: { fillColor: [124, 58, 237] },
+    didParseCell: function(data) {
+      if (data.section === 'body' && data.column.index === 6) {
+        if (data.cell.raw === 'COINCIDE') data.cell.styles.fillColor = [220, 252, 231];
+        else if (data.cell.raw && data.cell.raw.toString().startsWith('FALTANTE')) data.cell.styles.fillColor = [254, 202, 202];
+        else if (data.cell.raw && data.cell.raw.toString().startsWith('SOBRANTE')) data.cell.styles.fillColor = [254, 215, 170];
+        else if (data.cell.raw === 'NO EN MAESTRO') data.cell.styles.fillColor = [226, 232, 240];
+      }
+    }
+  });
+  doc.save(`Comparacion_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+cargar();
+</script>
+</body>
+</html>
