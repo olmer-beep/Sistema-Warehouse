@@ -226,6 +226,15 @@
     }
 
     function renderTable() {
+        // Ordenar siempre por locación (vacíos al final)
+        itemsEntrada.sort((a, b) => {
+            const la = (a.loc || '').toUpperCase();
+            const lb = (b.loc || '').toUpperCase();
+            if (!la && !lb) return 0;
+            if (!la) return 1;
+            if (!lb) return -1;
+            return la.localeCompare(lb);
+        });
         const body = document.getElementById('lista-body');
         body.innerHTML = '';
         itemsEntrada.forEach((it, idx) => {
