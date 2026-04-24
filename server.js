@@ -426,6 +426,248 @@ app.post('/api/sync/:lista', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ================================================================
+// ANALÍTICA: CSV ventas 3 meses + historial costos
+// ================================================================
+const SOLD_PATH   = path.join(__dirname, 'analytics_sold.json');
+const COSTOS_PATH = path.join(__dirname, 'analytics_costos.json');
+
+// Upload CSV ventas 3 meses
+app.post('/api/upload-sold',
+    express.raw({ limit: '30mb', type: () => true }),
+    (req, res) => {
+        try {
+            let txt = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
+            if (txt.charCodeAt(0) === 0xFEFF) txt = txt.substring(1);
+            const lines = txt.split(/\r?\n/).filter(l => l.trim());
+            const map = {};
+            for (let i = 1; i < lines.length; i++) {
+                const cols = lines[i].split(',');
+                const item = (cols[0]||'').trim();
+                if (!item) continue;
+                map[item] = {
+                    desc:    (cols[1]||'').trim(),
+                    stMaria: parseInt(cols[2]) || 0,
+                    salina:  parseInt(cols[3]) || 0,
+                    total:   parseInt(cols[4]) || 0
+                };
+            }
+            fs.writeFileSync(SOLD_PATH, JSON.stringify({ map, updatedAt: new Date().toISOString() }));
+            res.json({ success: true, total: Object.keys(map).length });
+        } catch(e) { res.status(500).json({ error: e.message }); }
+    }
+);
+
+// Upload CSV historial costos
+app.post('/api/upload-costos',
+    express.raw({ limit: '50mb', type: () => true }),
+    (req, res) => {
+        try {
+            let txt = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
+            if (txt.charCodeAt(0) === 0xFEFF) txt = txt.substring(1);
+            const lines = txt.split(/\r?\n/).filter(l => l.trim());
+            // parse header
+            const header = splitCSVLineSrv(lines[0]);
+            const idx = {
+                shortD:   header.indexOf('SHORT D'),
+                item:     header.indexOf('ITEM'),
+                longDesc: header.indexOf('Long Description'),
+                ship:     header.indexOf('SHIP'),
+                control:  header.indexOf('CONTROL'),
+                invoice:  header.indexOf('INVOICE'),
+                pagina:   header.indexOf('PAGINA'),
+                vendor:   header.indexOf('VENDOR'),
+                duty:     header.indexOf('DUTY'),
+                price:    header.indexOf('UNIT PRICE'),
+                ncarga:   header.indexOf('N# CARGA'),
+                fecha:    header.indexOf('FECHA'),
+                qty:      header.indexOf('QTY TOTAL'),
+                cat:      header.indexOf('CATEGORIA'),
+                extPrice: header.indexOf('EXT PRICE'),
+            };
+            const map = {};
+            for (let i = 1; i < lines.length; i++) {
+                const c = splitCSVLineSrv(lines[i]);
+                const item = (c[idx.item]||'').trim();
+                if (!item) continue;
+                const row = {
+                    shortD:   (c[idx.shortD]||'').trim(),
+                    longDesc: (c[idx.longDesc]||'').trim(),
+                    invoice:  (c[idx.invoice]||'').trim(),
+                    pagina:   (c[idx.pagina]||'').trim(),
+                    vendor:   (c[idx.vendor]||'').trim(),
+                    duty:     (c[idx.duty]||'').trim(),
+                    price:    (c[idx.price]||'').trim(),
+                    ncarga:   (c[idx.ncarga]||'').trim(),
+                    fecha:    (c[idx.fecha]||'').trim(),
+                    qty:      parseInt(c[idx.qty]) || 0,
+                    cat:      (c[idx.cat]||'').trim(),
+                    extPrice: (c[idx.extPrice]||'').trim(),
+                };
+                if (!map[item]) map[item] = [];
+                map[item].push(row);
+            }
+            fs.writeFileSync(COSTOS_PATH, JSON.stringify({ map, updatedAt: new Date().toISOString() }));
+            res.json({ success: true, items: Object.keys(map).length });
+        } catch(e) { res.status(500).json({ error: e.message }); }
+    }
+);
+
+// Status de archivos analítica
+app.get('/api/analytics-status', (req, res) => {
+    const sold   = fs.existsSync(SOLD_PATH)   ? JSON.parse(fs.readFileSync(SOLD_PATH,'utf8'))   : null;
+    const costos = fs.existsSync(COSTOS_PATH) ? JSON.parse(fs.readFileSync(COSTOS_PATH,'utf8')) : null;
+    res.json({
+        sold:   sold   ? { loaded: true, total: Object.keys(sold.map).length,   updatedAt: sold.updatedAt }   : { loaded: false },
+        costos: costos ? { loaded: true, items: Object.keys(costos.map).length, updatedAt: costos.updatedAt } : { loaded: false }
+    });
+});
+
+// Datos completos de un ítem para analítica
+app.get('/api/analytics/:item', async (req, res) => {
+    try {
+        const item = req.params.item.trim();
+        const sold   = fs.existsSync(SOLD_PATH)   ? JSON.parse(fs.readFileSync(SOLD_PATH,'utf8')).map   : {};
+        const costos = fs.existsSync(COSTOS_PATH) ? JSON.parse(fs.readFileSync(COSTOS_PATH,'utf8')).map : {};
+        const maestro = await getWarehouseMap();
+
+        const soldData   = sold[item]   || null;
+        const historial  = costos[item] || [];
+        const maestroRow = maestro[item]|| null;
+
+        // Ordenar historial por fecha desc
+        historial.sort((a, b) => {
+            const da = new Date(a.fecha), db = new Date(b.fecha);
+            return db - da;
+        });
+
+        const ultimo = historial[0] || null;
+
+        res.json({
+            item,
+            sold: soldData,
+            historial,
+            ultimo,
+            maestro: maestroRow,
+            totalActual: maestroRow ? (parseInt(maestroRow.ALL) || 0) : null
+        });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Todos los ítems para la tabla general de analítica
+app.get('/api/analytics-all', async (req, res) => {
+    try {
+        if (!fs.existsSync(SOLD_PATH) || !fs.existsSync(COSTOS_PATH)) {
+            return res.json({ loaded: false, items: [] });
+        }
+        const sold   = JSON.parse(fs.readFileSync(SOLD_PATH,'utf8')).map;
+        const costos = JSON.parse(fs.readFileSync(COSTOS_PATH,'utf8')).map;
+        const maestro = await getWarehouseMap();
+
+        // Unión de todos los ítems
+        const allItems = new Set([...Object.keys(sold), ...Object.keys(costos)]);
+        const result = [];
+
+        for (const item of allItems) {
+            const s = sold[item] || null;
+            const hist = (costos[item] || []).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
+            const ult = hist[0] || null;
+            const m = maestro[item] || null;
+
+            result.push({
+                item,
+                desc:        s ? s.desc : (ult ? ult.longDesc : ''),
+                cat:         ult ? ult.cat : '',
+                totalActual: m ? (parseInt(m.ALL) || 0) : null,
+                vendido3m:   s ? s.total : 0,
+                stMaria:     s ? s.stMaria : 0,
+                salina:      s ? s.salina : 0,
+                ultimaFecha: ult ? ult.fecha : '',
+                ultimoInvoice: ult ? ult.invoice : '',
+                ultimoPrecio:  ult ? ult.price : '',
+                ultimoNCarga:  ult ? ult.ncarga : '',
+                vendor:        ult ? ult.vendor : '',
+                entradasTotales: hist.length
+            });
+        }
+
+        res.json({ loaded: true, items: result });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ================================================================
+// CSV COMPARA PRECIO (fuente principal para recomendaciones)
+// ================================================================
+const COMPARA_PATH = path.join(__dirname, 'compara_precio.json');
+
+app.post('/api/upload-compara',
+    express.raw({ limit: '50mb', type: () => true }),
+    (req, res) => {
+        try {
+            let txt = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
+            if (txt.charCodeAt(0) === 0xFEFF) txt = txt.substring(1);
+            const lines = txt.split(/\r?\n/).filter(l => l.trim());
+            const header = splitCSVLineSrv(lines[0]);
+            const map = {};
+            let count = 0;
+            for (let i = 1; i < lines.length; i++) {
+                const c = splitCSVLineSrv(lines[i]);
+                if (!c || c.length < 6) continue;
+                const item = (c[2]||'').trim(); // col C = ITEM
+                if (!item) continue;
+                map[item] = {
+                    cat:          (c[0]||'').trim(),   // A CATEG
+                    shortD:       (c[1]||'').trim(),   // B SHORT D
+                    desc:         (c[3]||'').trim(),   // D DESCRIPCION
+                    invoice:      (c[4]||'').trim(),   // E INVOICE
+                    qtyLastInv:   parseFloat(c[5])||0, // F QTY LAST INV
+                    duty:         (c[6]||'').trim(),   // G DUTY
+                    page:         (c[7]||'').trim(),   // H PAGE
+                    vendor:       (c[8]||'').trim(),   // I VENDOR
+                    ncarga:       (c[9]||'').trim(),   // J N# CARGA
+                    dateLastIn:   (c[10]||'').trim(),  // K DATE LAST IN
+                    priceLastIn:  (c[11]||'').trim(),  // L UNIT PRICE LAST IN
+                    currentPrice: (c[12]||'').trim(),  // M CURRENT PRICE
+                    inventario:   parseFloat(c[18])||0,// S INVENTARIO NETO
+                    ventas3m:     parseFloat(c[19])||0,// T last 3 month sold
+                    lastDaysSold: (c[20]||'').trim(),  // U LAST DAYS SOLD
+                    loc:          (c[21]||'').trim(),  // V LOC
+                    margen:       (c[34]||'').trim(),  // AI MARGEN
+                    lastCost:     (c[35]||'').trim(),  // AJ LAST COST
+                    priceVenta:   (c[36]||'').trim(),  // AK PRICE VENTA
+                };
+                count++;
+            }
+            fs.writeFileSync(COMPARA_PATH, JSON.stringify({ map, updatedAt: new Date().toISOString(), total: count }));
+            res.json({ success: true, total: count, updatedAt: new Date().toISOString() });
+        } catch(e) { res.status(500).json({ error: e.message }); }
+    }
+);
+
+app.get('/api/compara-status', (req, res) => {
+    if (!fs.existsSync(COMPARA_PATH)) return res.json({ loaded: false });
+    try {
+        const d = JSON.parse(fs.readFileSync(COMPARA_PATH, 'utf8'));
+        res.json({ loaded: true, total: d.total, updatedAt: d.updatedAt });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/compara-all', (req, res) => {
+    if (!fs.existsSync(COMPARA_PATH)) return res.json({ loaded: false, map: {} });
+    try {
+        const d = JSON.parse(fs.readFileSync(COMPARA_PATH, 'utf8'));
+        res.json({ loaded: true, map: d.map });
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/compara/:item', (req, res) => {
+    if (!fs.existsSync(COMPARA_PATH)) return res.json(null);
+    try {
+        const d = JSON.parse(fs.readFileSync(COMPARA_PATH, 'utf8'));
+        res.json(d.map[req.params.item.trim()] || null);
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // --- INICIO ---
 const PORT = 4000;
 app.listen(PORT, () => {

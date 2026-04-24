@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analítica de Inventario - BetterDeals</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{--primary:#1e40af;--green:#059669;--red:#ef4444;--orange:#f59e0b;--purple:#7c3aed;--bg:#f1f5f9;--border:#e2e8f0;--text:#1e293b;}
+*{box-sizing:border-box;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);margin:0;padding:20px;}
+.card{background:white;max-width:1600px;margin:auto;padding:28px;border-radius:15px;box-shadow:0 10px 25px rgba(0,0,0,0.1);}
+.header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--primary);padding-bottom:16px;margin-bottom:18px;flex-wrap:wrap;gap:12px;}
+.header h2{margin:5px 0 0;font-size:20px;}
+.header-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.btn{padding:9px 15px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;display:inline-flex;align-items:center;gap:5px;text-decoration:none;transition:0.15s;min-height:38px;white-space:nowrap;}
+.btn:hover{filter:brightness(1.08);transform:translateY(-1px);}
+.btn:disabled{opacity:0.4;pointer-events:none;}
+.btn-primary{background:var(--primary);color:white;}
+.btn-green{background:var(--green);color:white;}
+.btn-red{background:var(--red);color:white;}
+.btn-orange{background:var(--orange);color:#1e293b;}
+.btn-purple{background:var(--purple);color:white;}
+.btn-gray{background:#475569;color:white;}
+.btn-light{background:#e2e8f0;color:#475569;}
+.btn-lg{padding:12px 20px;font-size:13px;}
+/* UPLOAD */
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
+.upload-card{border:2px dashed #cbd5e1;border-radius:10px;padding:16px;background:#f8fafc;text-align:center;cursor:pointer;transition:0.2s;}
+.upload-card:hover{border-color:var(--primary);background:#eff6ff;}
+.upload-card.loaded{border-color:var(--green);background:#f0fdf4;cursor:default;}
+.upload-card .uc-icon{font-size:28px;margin-bottom:6px;}
+.upload-card .uc-title{font-weight:700;font-size:13px;}
+.upload-card .uc-sub{font-size:11px;color:#64748b;margin-top:3px;}
+/* TOOLBAR */
+.toolbar{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
+.search-box{flex:1;min-width:260px;}
+.search-box input{width:100%;padding:11px 15px;border-radius:8px;border:2px solid var(--primary);font-size:14px;}
+/* CAT FILTER */
+.cat-filter-wrap{margin-bottom:14px;}
+.cat-filter-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;}
+.cat-filter-label{font-size:12px;font-weight:700;color:#475569;}
+.cat-cb-grid{display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:#f8fafc;border-radius:8px;min-height:38px;}
+.cat-cb{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;border:2px solid var(--border);background:white;cursor:pointer;font-size:11px;font-weight:700;user-select:none;transition:0.15s;}
+.cat-cb.sel{background:#e0e7ff;border-color:#6366f1;color:#3730a3;}
+/* FILTROS */
+.filter-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;align-items:center;}
+.fpill{padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:2px solid var(--border);background:white;transition:0.15s;white-space:nowrap;}
+.fpill.active{background:var(--primary);color:white;border-color:var(--primary);}
+/* STATS */
+.stats-row{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+.stat-pill{padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;background:#f1f5f9;color:#475569;}
+.stat-pill span{font-size:18px;font-weight:800;display:block;line-height:1;}
+/* TABLE */
+.table-wrap{overflow-x:auto;max-height:520px;overflow-y:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{background:#f8fafc;padding:10px 8px;text-align:left;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:5;}
+thead th.sortable{cursor:pointer;user-select:none;}
+thead th.sortable:hover{background:#e0e7ff;color:var(--primary);}
+td{padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+tbody tr:hover{background:#fafafa;}
+.item-code{font-weight:700;color:var(--primary);}
+.pill-cat{padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700;background:#e0e7ff;color:#3730a3;white-space:nowrap;}
+.n-total{background:#dbeafe;color:#1e40af;padding:3px 8px;border-radius:5px;font-weight:800;display:inline-block;min-width:32px;text-align:center;}
+.n-sold{background:#dcfce7;color:#166534;padding:3px 8px;border-radius:5px;font-weight:700;display:inline-block;min-width:28px;text-align:center;}
+.n-null{color:#cbd5e1;font-style:italic;font-size:11px;}
+.action-btns{display:flex;gap:5px;}
+.empty-msg{text-align:center;padding:50px 20px;color:#94a3b8;}
+.loading-msg{text-align:center;padding:40px;color:var(--primary);font-weight:700;}
+/* MODALES */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.65);z-index:1000;overflow-y:auto;padding:24px;}
+.modal-overlay.show{display:block;}
+.modal-box{background:white;max-width:860px;margin:0 auto;border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,0.3);}
+.modal-box.wide{max-width:1200px;}
+.modal-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;gap:12px;}
+.modal-header h3{margin:0;font-size:17px;}
+.modal-sub{font-size:12px;color:#64748b;margin-top:3px;}
+/* REC */
+.rec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+.rec-card{padding:16px;border-radius:10px;text-align:center;border:1px solid var(--border);}
+.rec-card .rc-num{font-size:28px;font-weight:800;line-height:1;}
+.rec-card .rc-lbl{font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;margin-top:5px;}
+.rec-result{background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;border-radius:12px;padding:20px;text-align:center;margin-bottom:16px;}
+.rec-result .rr-num{font-size:48px;font-weight:800;line-height:1;}
+.rec-result .rr-lbl{font-size:13px;opacity:0.9;margin-top:6px;}
+.rec-note{font-size:12px;color:#64748b;background:#f8fafc;padding:12px;border-radius:8px;line-height:1.6;margin-top:12px;}
+.alerta{padding:10px 14px;border-radius:8px;font-size:12px;font-weight:700;margin-bottom:10px;}
+.alerta.warn{background:#fef3c7;color:#92400e;}
+.alerta.ok{background:#dcfce7;color:#166534;}
+.alerta.err{background:#fee2e2;color:#991b1b;}
+/* BUSCADOR DE CATEGORÍAS */
+.cat-search-wrap{position:relative;margin-bottom:10px;}
+.cat-search-wrap input{width:100%;padding:9px 14px;border-radius:8px;border:2px solid var(--purple);font-size:13px;}
+.cat-search-wrap input:focus{outline:none;border-color:#5b21b6;}
+/* CAT CHECKBOXES modal */
+.rec-cat-grid{display:flex;flex-wrap:wrap;gap:7px;padding:12px;background:#f8fafc;border-radius:8px;max-height:160px;overflow-y:auto;margin-bottom:14px;}
+/* REC LIST */
+.rec-list-table{overflow-x:auto;max-height:440px;overflow-y:auto;border-radius:8px;border:1px solid var(--border);}
+.rec-list-table table{width:100%;border-collapse:collapse;font-size:12px;}
+.rec-list-table th{background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid var(--border);position:sticky;top:0;z-index:2;white-space:nowrap;}
+.rec-list-table td{padding:8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+.rec-list-table tbody tr:hover{background:#fafafa;}
+.cat-group-header td{background:#f1f5f9;font-weight:800;font-size:11px;color:#475569;text-transform:uppercase;padding:8px 10px;letter-spacing:0.5px;}
+.foto-thumb-sm{width:40px;height:40px;object-fit:contain;border-radius:5px;filter:contrast(1.08) saturate(1.1);}
+.foto-empty-sm{width:40px;height:40px;background:#f1f5f9;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:14px;}
+.n-sacar{background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:6px;font-weight:800;font-size:14px;display:inline-block;min-width:36px;text-align:center;}
+.btn-del-rec{color:var(--red);background:none;border:none;cursor:pointer;font-weight:800;font-size:15px;padding:2px 5px;}
+/* HISTORIAL */
+.fecha-badge{background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:4px;font-weight:700;font-size:11px;}
+.invoice-badge{background:#e0e7ff;color:#3730a3;padding:2px 7px;border-radius:4px;font-weight:700;font-size:11px;}
+@media(max-width:900px){
+  .upload-grid{grid-template-columns:1fr;}
+  .rec-grid{grid-template-columns:repeat(2,1fr);}
+  .header{flex-direction:column;}
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <div>
+      <a href="index.html" style="text-decoration:none;color:var(--primary);font-weight:700;font-size:13px;">⬅ VOLVER AL INVENTARIO</a>
+      <h2>📊 Analítica de Inventario</h2>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-orange btn-lg" onclick="abrirRecomendacion()">🧠 Recomendación de Pedido</button>
+      <button class="btn btn-purple btn-lg" onclick="abrirHistorial()">📦 Historial de Ítem</button>
+      <button class="btn btn-gray" onclick="exportarCSVTabla()">📊 CSV</button>
+    </div>
+  </div>
+
+  <div class="upload-grid">
+    <div class="upload-card" id="uc-sold" onclick="document.getElementById('f-sold').click()">
+      <div class="uc-icon">📈</div>
+      <div class="uc-title">CSV Ventas 3 Meses</div>
+      <div class="uc-sub" id="sub-sold">INVENTORY_WAREHOUSE_-_last_3_month_sold.csv</div>
+      <input type="file" id="f-sold" accept=".csv" style="display:none" onchange="subirCSV('sold',this)">
+    </div>
+    <div class="upload-card" id="uc-costos" onclick="document.getElementById('f-costos').click()">
+      <div class="uc-icon">💰</div>
+      <div class="uc-title">CSV Historial de Costos</div>
+      <div class="uc-sub" id="sub-costos">INVENTORY_WAREHOUSE_-_DATOS_COSTOS.csv</div>
+      <input type="file" id="f-costos" accept=".csv" style="display:none" onchange="subirCSV('costos',this)">
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="btn btn-primary btn-lg" id="btn-cargar" onclick="cargarTabla()" disabled>🔄 Cargar / Actualizar Tabla</button>
+    <div class="search-box">
+      <input type="text" id="search-item" placeholder="🔍 Buscar ítem por código o descripción..." oninput="aplicarFiltrosYRender()" autocomplete="off">
+    </div>
+    <button class="btn btn-light" onclick="document.getElementById('search-item').value='';aplicarFiltrosYRender();">✕</button>
+  </div>
+
+  <!-- FILTRO CATEGORÍAS TABLA -->
+  <div class="cat-filter-wrap">
+    <div class="cat-filter-header">
+      <span class="cat-filter-label">FILTRAR POR CATEGORÍA:</span>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-light" style="padding:3px 9px;font-size:11px;" onclick="selTabCats(true)">✓ Todas</button>
+        <button class="btn btn-light" style="padding:3px 9px;font-size:11px;" onclick="selTabCats(false)">✗ Ninguna</button>
+      </div>
+    </div>
+    <div class="cat-cb-grid" id="tab-cat-grid"><span style="font-size:11px;color:#94a3b8;align-self:center;">Carga la tabla para ver categorías…</span></div>
+  </div>
+
+  <div class="filter-row">
+    <span style="font-size:11px;font-weight:700;color:#64748b;margin-right:4px;">FILTRAR:</span>
+    <span class="fpill active" data-f="todos" onclick="setFiltro('todos')">Todos</span>
+    <span class="fpill" data-f="sin_stock"  onclick="setFiltro('sin_stock')">Sin stock</span>
+    <span class="fpill" data-f="con_ventas" onclick="setFiltro('con_ventas')">Con ventas 3m</span>
+    <span class="fpill" data-f="sin_ventas" onclick="setFiltro('sin_ventas')">Sin ventas 3m</span>
+  </div>
+
+  <div class="stats-row" id="stats-row" style="display:none;">
+    <div class="stat-pill"><span id="st-total">0</span>Ítems totales</div>
+    <div class="stat-pill"><span id="st-stock">0</span>Con stock</div>
+    <div class="stat-pill"><span id="st-vendidos">0</span>Con ventas 3m</div>
+    <div class="stat-pill"><span id="st-sinventa">0</span>Sin ventas 3m</div>
+  </div>
+
+  <div class="table-wrap">
+    <div id="empty-msg" class="empty-msg"><div style="font-size:40px;margin-bottom:10px;">📊</div>Sube los dos CSV y presiona <b>Cargar Tabla</b></div>
+    <div id="loading-msg" class="loading-msg" style="display:none;">⏳ Cargando datos...</div>
+    <table id="tabla" style="display:none;">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="ordenarPor('item')">ITEM ↕</th>
+          <th>DESCRIPCIÓN</th>
+          <th class="sortable" onclick="ordenarPor('cat')">CAT. ↕</th>
+          <th class="sortable" onclick="ordenarPor('totalActual')">STOCK TOTAL ↕</th>
+          <th class="sortable" onclick="ordenarPor('vendido3m')">VENDIDO 3M ↕</th>
+          <th>ÚLTIMA FECHA</th>
+          <th>ÚLTIMO INVOICE</th>
+          <th>ÚLTIMO PRECIO</th>
+          <th>VENDOR</th>
+          <th># ENTRADAS</th>
+          <th>ACCIONES</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL RECOMENDACIÓN MASIVA -->
+<div class="modal-overlay" id="modal-rec">
+  <div class="modal-box wide">
+    <div class="modal-header">
+      <div>
+        <h3>🧠 Recomendación de Pedido</h3>
+        <div class="modal-sub" id="rec-sub">Selecciona categorías y genera la lista</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-green" onclick="exportarRecCSV()">📊 CSV</button>
+        <button class="btn btn-red" onclick="exportarRecPDF()">📄 PDF</button>
+        <button class="btn btn-light" onclick="cerrarModal('modal-rec')">✕</button>
+      </div>
+    </div>
+
+    <!-- BUSCADOR DE CATEGORÍAS -->
+    <div style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px;">
+        <span style="font-size:12px;font-weight:700;color:#475569;">CATEGORÍAS A INCLUIR:</span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-light" style="padding:3px 9px;font-size:11px;" onclick="selAllCats(true)">✓ Todas</button>
+          <button class="btn btn-light" style="padding:3px 9px;font-size:11px;" onclick="selAllCats(false)">✗ Ninguna</button>
+        </div>
+      </div>
+      <div class="cat-search-wrap">
+        <input type="text" id="cat-search-input" placeholder="🔍 Escribe para buscar y filtrar categorías..."
+          oninput="filtrarCatGrid(this.value)" autocomplete="off">
+      </div>
+      <div class="rec-cat-grid" id="cat-grid"></div>
+    </div>
+
+    <!-- AGREGAR MANUAL + GENERAR -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
+      <div style="position:relative;flex:1;min-width:240px;">
+        <input type="text" id="rec-search-add" placeholder="🔍 Agregar ítem manualmente por código o nombre..."
+          style="width:100%;padding:10px 14px;border-radius:8px;border:2px solid var(--orange);font-size:13px;"
+          oninput="buscarParaAgregar(this.value)" autocomplete="off">
+        <div id="sug-rec" style="position:absolute;background:white;width:100%;z-index:300;display:none;max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.12);"></div>
+      </div>
+      <button class="btn btn-primary btn-lg" onclick="generarLista()">⚡ Generar Lista</button>
+    </div>
+
+    <div id="rec-stats" style="display:none;margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;"></div>
+    <div id="rec-body">
+      <div style="text-align:center;padding:30px;color:#94a3b8;">
+        <div style="font-size:36px;margin-bottom:8px;">🧠</div>
+        Selecciona categorías y presiona <b>⚡ Generar Lista</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL REC INDIVIDUAL -->
+<div class="modal-overlay" id="modal-rec-item">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h3>🧠 Recomendación de Pedido</h3>
+        <div class="modal-sub" id="rec-item-sub">—</div>
+      </div>
+      <button class="btn btn-light" onclick="cerrarModal('modal-rec-item')">✕</button>
+    </div>
+    <div id="rec-item-body"></div>
+  </div>
+</div>
+
+<!-- MODAL HISTORIAL -->
+<div class="modal-overlay" id="modal-hist">
+  <div class="modal-box wide">
+    <div class="modal-header">
+      <div>
+        <h3>📦 Historial de Entradas</h3>
+        <div class="modal-sub" id="hist-sub">—</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-gray" onclick="exportarHistCSV()">📊 CSV</button>
+        <button class="btn btn-light" onclick="cerrarModal('modal-hist')">✕</button>
+      </div>
+    </div>
+    <div id="hist-body"></div>
+  </div>
+</div>
+
+<script>
+let datosCompletos = [], datosFiltrados = [];
+let filtroActivo = 'todos', sortCol = 'cat', sortAsc = true;
+let itemActivo = null;
+let recLista = [], catsDisponibles = [], catsSeleccionadas = new Set();
+let tabCatsDisponibles = [], tabCatsSeleccionadas = new Set();
+const recPhotoCache = {};
+
+// ── INIT ──────────────────────────────────────────────────────
+window.onload = async () => { await verificarStatus(); };
+
+async function verificarStatus() {
+    try {
+        const r = await fetch('/api/analytics-status');
+        const s = await r.json();
+        if (s.sold.loaded)   marcarCargado('uc-sold',   'sub-sold',   `✓ ${s.sold.total} ítems · ${fmtFecha(s.sold.updatedAt)}`);
+        if (s.costos.loaded) marcarCargado('uc-costos', 'sub-costos', `✓ ${s.costos.items} ítems · ${fmtFecha(s.costos.updatedAt)}`);
+    } catch(e) {}
+}
+
+function marcarCargado(cardId, subId, msg) {
+    const card = document.getElementById(cardId);
+    if (card) { card.classList.add('loaded'); card.onclick = null; }
+    document.getElementById(subId).innerText = msg;
+    if (document.getElementById('sub-sold').innerText.startsWith('✓') &&
+        document.getElementById('sub-costos').innerText.startsWith('✓')) {
+        document.getElementById('btn-cargar').disabled = false;
+    }
+}
+
+// ── UPLOAD ────────────────────────────────────────────────────
+async function subirCSV(tipo, input) {
+    const file = input.files[0]; if (!file) return;
+    document.getElementById(`sub-${tipo}`).innerText = '⏳ Subiendo...';
+    try {
+        const texto = await file.text();
+        const r = await fetch(`/api/upload-${tipo}`, { method:'POST', headers:{'Content-Type':'text/csv'}, body:texto });
+        const d = await r.json();
+        if (d.success !== false) marcarCargado(`uc-${tipo}`, `sub-${tipo}`, `✓ ${d.total||d.items} ítems · ${file.name}`);
+        else document.getElementById(`sub-${tipo}`).innerText = '❌ Error';
+    } catch(e) { document.getElementById(`sub-${tipo}`).innerText = '❌ '+e.message; }
+    input.value = '';
+}
+
+// ── CARGAR TABLA ──────────────────────────────────────────────
+async function cargarTabla() {
+    document.getElementById('empty-msg').style.display = 'none';
+    document.getElementById('loading-msg').style.display = 'block';
+    document.getElementById('tabla').style.display = 'none';
+    try {
+        const r = await fetch('/api/analytics-all');
+        const d = await r.json();
+        if (!d.loaded) { document.getElementById('loading-msg').style.display='none'; document.getElementById('empty-msg').style.display='block'; return; }
+        datosCompletos = d.items;
+        tabCatsDisponibles = [...new Set(datosCompletos.map(r=>r.cat||'SIN CAT').filter(Boolean))].sort();
+        tabCatsSeleccionadas = new Set(tabCatsDisponibles);
+        renderTabCatGrid();
+        actualizarStats();
+        aplicarFiltrosYRender();
+        document.getElementById('loading-msg').style.display = 'none';
+        document.getElementById('stats-row').style.display = 'flex';
+    } catch(e) { document.getElementById('loading-msg').innerHTML = '❌ '+e.message; }
+}
+
+// ── FILTRO CATEGORÍAS TABLA ───────────────────────────────────
+function renderTabCatGrid() {
+    const grid = document.getElementById('tab-cat-grid');
+    grid.innerHTML = tabCatsDisponibles.map(cat => `
+      <div class="cat-cb ${tabCatsSeleccionadas.has(cat)?'sel':''}" onclick="toggleTabCat('${cat.replace(/'/g,"\\'")}')">
+        ${tabCatsSeleccionadas.has(cat)?'✓':'○'} ${cat}
+      </div>`).join('');
+}
+function toggleTabCat(cat) { tabCatsSeleccionadas.has(cat)?tabCatsSeleccionadas.delete(cat):tabCatsSeleccionadas.add(cat); renderTabCatGrid(); aplicarFiltrosYRender(); }
+function selTabCats(sel) { if(sel) tabCatsDisponibles.forEach(c=>tabCatsSeleccionadas.add(c)); else tabCatsSeleccionadas.clear(); renderTabCatGrid(); aplicarFiltrosYRender(); }
+
+// ── FILTROS Y RENDER TABLA ────────────────────────────────────
+function setFiltro(f) {
+    filtroActivo = f;
+    document.querySelectorAll('.fpill').forEach(p=>p.classList.toggle('active', p.dataset.f===f));
+    aplicarFiltrosYRender();
+}
+function ordenarPor(col) { if(sortCol===col) sortAsc=!sortAsc; else { sortCol=col; sortAsc=true; } aplicarFiltrosYRender(); }
+
+function aplicarFiltrosYRender() {
+    const q = (document.getElementById('search-item').value||'').toUpperCase();
+    datosFiltrados = datosCompletos.filter(r => {
+        if (tabCatsSeleccionadas.size && !tabCatsSeleccionadas.has(r.cat||'SIN CAT')) return false;
+        if (q && !r.item.toString().toUpperCase().includes(q) && !(r.desc||'').toUpperCase().includes(q)) return false;
+        switch(filtroActivo) {
+            case 'sin_stock':  return r.totalActual !== null && r.totalActual === 0;
+            case 'con_ventas': return r.vendido3m > 0;
+            case 'sin_ventas': return r.vendido3m === 0;
+            default: return true;
+        }
+    });
+    // Siempre ordenar por categoría primero, luego por sortCol
+    datosFiltrados.sort((a, b) => {
+        const ca = (a.cat||'').toUpperCase(), cb = (b.cat||'').toUpperCase();
+        if (ca !== cb) return ca.localeCompare(cb);
+        if (sortCol && sortCol !== 'cat') {
+            const va = a[sortCol]??-1, vb = b[sortCol]??-1;
+            return sortAsc ? (va>vb?1:-1) : (va<vb?1:-1);
+        }
+        return 0;
+    });
+    renderTabla();
+}
+
+function actualizarStats() {
+    document.getElementById('st-total').innerText    = datosCompletos.length;
+    document.getElementById('st-stock').innerText    = datosCompletos.filter(r=>r.totalActual>0).length;
+    document.getElementById('st-vendidos').innerText = datosCompletos.filter(r=>r.vendido3m>0).length;
+    document.getElementById('st-sinventa').innerText = datosCompletos.filter(r=>r.vendido3m===0).length;
+}
+
+function renderTabla() {
+    const tbody = document.getElementById('tbody');
+    const tabla = document.getElementById('tabla');
+    const empty = document.getElementById('empty-msg');
+    if (!datosFiltrados.length) { tabla.style.display='none'; empty.style.display='block'; empty.innerHTML='<div style="font-size:32px;margin-bottom:8px;">🔍</div>Sin resultados'; return; }
+    empty.style.display='none'; tabla.style.display='table';
+    tbody.innerHTML = datosFiltrados.map(r => `
+    <tr>
+      <td class="item-code">${r.item}</td>
+      <td style="max-width:240px;font-size:12px;font-weight:600;">${r.desc||'<span class="n-null">sin desc</span>'}</td>
+      <td><span class="pill-cat">${r.cat||'—'}</span></td>
+      <td>${r.totalActual!==null?`<span class="n-total">${r.totalActual}</span>`:'<span class="n-null">N/A</span>'}</td>
+      <td>${r.vendido3m>0?`<span class="n-sold">${r.vendido3m}</span>`:'<span class="n-null">0</span>'}</td>
+      <td style="font-size:11px;color:#475569;">${r.ultimaFecha||'—'}</td>
+      <td><span style="background:#e0e7ff;color:#3730a3;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;">${r.ultimoInvoice||'—'}</span></td>
+      <td style="font-size:11px;font-weight:700;color:#166534;">${r.ultimoPrecio||'—'}</td>
+      <td style="font-size:11px;color:#64748b;">${r.vendor||'—'}</td>
+      <td style="text-align:center;font-weight:700;">${r.entradasTotales}</td>
+      <td><div class="action-btns">
+        <button class="btn btn-orange" style="padding:5px 9px;font-size:10px;" onclick="abrirRecItem('${r.item}')">🧠 Rec</button>
+        <button class="btn btn-purple" style="padding:5px 9px;font-size:10px;" onclick="abrirHistItem('${r.item}')">📦 Hist</button>
+      </div></td>
+    </tr>`).join('');
+}
+
+// ── CÁLCULO RECOMENDACIÓN ─────────────────────────────────────
+function calcRec(item) {
+    const hoy = new Date();
+    const dias = item.ultimaFecha ? Math.floor((hoy-new Date(item.ultimaFecha))/86400000) : null;
+    if (dias===null || dias>365) return null;
+    const v = item.vendido3m||0, s = item.totalActual??0;
+    if (v===0) return null;
+    if (s>=v) return null;
+    const rec = Math.min(v-s, v*2);
+    return { rec:Math.round(rec), ventasMes:v/3, stock:s, dias, pct:Math.round((s/v)*100) };
+}
+
+// ── RECOMENDACIÓN MASIVA (botón header) ───────────────────────
+function abrirRecomendacion() {
+    if (!datosCompletos.length) return alert('Primero carga la tabla.');
+    catsDisponibles = [...new Set(datosCompletos.map(r=>r.cat||'SIN CAT').filter(Boolean))].sort();
+    catsSeleccionadas = new Set(catsDisponibles);
+    document.getElementById('cat-search-input').value = '';
+    renderCatGrid('');
+    recLista = [];
+    document.getElementById('rec-body').innerHTML = '<div style="text-align:center;padding:30px;color:#94a3b8;"><div style="font-size:36px;margin-bottom:8px;">🧠</div>Selecciona categorías y presiona <b>⚡ Generar Lista</b></div>';
+    document.getElementById('rec-stats').style.display = 'none';
+    document.getElementById('modal-rec').classList.add('show');
+}
+
+// Renderiza checkboxes de categoría filtrando por texto
+function renderCatGrid(filtro) {
+    const q = (filtro||'').toUpperCase().trim();
+    const visibles = q ? catsDisponibles.filter(c=>c.toUpperCase().includes(q)) : catsDisponibles;
+    const grid = document.getElementById('cat-grid');
+    if (!visibles.length) { grid.innerHTML = '<span style="font-size:11px;color:#94a3b8;">Sin resultados para "'+filtro+'"</span>'; return; }
+    grid.innerHTML = visibles.map(cat => `
+      <div class="cat-cb ${catsSeleccionadas.has(cat)?'sel':''}" onclick="toggleCat('${cat.replace(/'/g,"\\'")}')">
+        ${catsSeleccionadas.has(cat)?'✓':'○'} ${cat}
+      </div>`).join('');
+}
+
+function filtrarCatGrid(val) { renderCatGrid(val); }
+
+function toggleCat(cat) { catsSeleccionadas.has(cat)?catsSeleccionadas.delete(cat):catsSeleccionadas.add(cat); renderCatGrid(document.getElementById('cat-search-input').value); }
+function selAllCats(sel) {
+    // Solo afecta las categorías visibles en el filtro actual
+    const q = (document.getElementById('cat-search-input').value||'').toUpperCase().trim();
+    const visibles = q ? catsDisponibles.filter(c=>c.toUpperCase().includes(q)) : catsDisponibles;
+    if(sel) visibles.forEach(c=>catsSeleccionadas.add(c)); else visibles.forEach(c=>catsSeleccionadas.delete(c));
+    renderCatGrid(document.getElementById('cat-search-input').value);
+}
+
+// Generar lista SIEMPRE en orden de categorías
+function generarLista() {
+    if (!catsSeleccionadas.size) return alert('Selecciona al menos una categoría.');
+    document.getElementById('rec-body').innerHTML = '<div style="text-align:center;padding:30px;color:var(--primary);font-weight:700;">⏳ Calculando...</div>';
+    recLista = [];
+    datosCompletos.filter(r=>catsSeleccionadas.has(r.cat||'SIN CAT')).forEach(item => {
+        const calc = calcRec(item);
+        if (!calc) return;
+        recLista.push({ ...item, recUnidades:calc.rec, ventasMes:calc.ventasMes, diasDesdeUltimo:calc.dias, pct:calc.pct });
+    });
+    // ORDENAR POR CATEGORÍA siempre
+    recLista.sort((a,b) => {
+        const ca=(a.cat||'').toUpperCase(), cb=(b.cat||'').toUpperCase();
+        if (ca!==cb) return ca.localeCompare(cb);
+        return b.recUnidades - a.recUnidades;
+    });
+    document.getElementById('rec-sub').innerText = `${recLista.length} ítems · ${[...catsSeleccionadas].sort().join(', ')}`;
+    renderRecLista();
+    cargarFotosRec();
+}
+
+function renderRecLista() {
+    const stats = document.getElementById('rec-stats');
+    stats.style.cssText = 'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;';
+    const totalU = recLista.reduce((s,r)=>s+r.recUnidades,0);
+    stats.innerHTML = `<div class="stat-pill"><span style="color:var(--primary)">${recLista.length}</span>Ítems</div>
+      <div class="stat-pill"><span style="color:var(--orange)">${totalU}</span>Unidades</div>
+      <div class="stat-pill"><span style="color:var(--purple)">${catsSeleccionadas.size}</span>Categorías</div>`;
+
+    if (!recLista.length) { document.getElementById('rec-body').innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8;">Sin ítems que cumplan los criterios.</div>'; return; }
+
+    // Agrupar por categoría para mostrar separadores visuales
+    let html = '<div class="rec-list-table"><table><thead><tr><th>FOTO</th><th>ITEM</th><th>DESCRIPCIÓN</th><th>STOCK</th><th>VEND.3M</th><th>COB%</th><th>PROM/MES</th><th>ÚLT.FECHA</th><th>ÚLT.INVOICE</th><th>PRECIO</th><th>VENDOR</th><th>PEDIR ✏️</th><th></th></tr></thead><tbody>';
+    let catActual = null;
+    recLista.forEach((r, idx) => {
+        const cat = r.cat || 'SIN CAT';
+        if (cat !== catActual) {
+            catActual = cat;
+            html += `<tr class="cat-group-header"><td colspan="13">📂 ${cat}</td></tr>`;
+        }
+        const cobColor = r.pct<=25?'var(--red)':r.pct<=50?'var(--orange)':'var(--green)';
+        html += `<tr>
+          <td><div class="foto-empty-sm" id="foto-rec-${r.item}">📦</div></td>
+          <td style="font-weight:700;color:var(--primary);">${r.item}</td>
+          <td style="max-width:200px;"><div style="font-size:12px;font-weight:600;color:#1e293b;">${r.desc||''}</div>${r.shortDesc?`<div style="font-size:10px;color:#94a3b8;">${r.shortDesc}</div>`:''}</td>
+          <td><span class="n-total">${r.totalActual??'—'}</span></td>
+          <td><span class="n-sold">${r.vendido3m}</span></td>
+          <td style="font-weight:700;color:${cobColor};text-align:center;">${r.pct}%</td>
+          <td style="font-weight:700;color:var(--orange);text-align:center;">${r.ventasMes.toFixed(1)}</td>
+          <td><span class="fecha-badge">${r.ultimaFecha||'—'}</span></td>
+          <td><span class="invoice-badge">${r.ultimoInvoice||'—'}</span></td>
+          <td style="font-weight:700;color:var(--green);font-size:11px;">${r.ultimoPrecio||'—'}</td>
+          <td style="font-size:11px;color:#64748b;">${r.vendor||'—'}</td>
+          <td><input type="number" min="0" value="${r.recUnidades}" style="width:62px;padding:5px;border:2px solid var(--orange);border-radius:6px;text-align:center;font-weight:800;font-size:13px;background:#fffbeb;"
+              onchange="recLista[${idx}].recUnidades=Math.max(0,parseInt(this.value)||0);renderRecStats()"></td>
+          <td><button class="btn-del-rec" onclick="elimRecFila(${idx})" title="Quitar">✕</button></td>
+        </tr>`;
+    });
+    html += '</tbody></table></div>';
+    document.getElementById('rec-body').innerHTML = html;
+}
+
+function renderRecStats() {
+    const totalU = recLista.reduce((s,r)=>s+(r.recUnidades||0),0);
+    const stats = document.getElementById('rec-stats');
+    stats.innerHTML = `<div class="stat-pill"><span style="color:var(--primary)">${recLista.length}</span>Ítems</div>
+      <div class="stat-pill"><span style="color:var(--orange)">${totalU}</span>Unidades</div>
+      <div class="stat-pill"><span style="color:var(--purple)">${catsSeleccionadas.size}</span>Categorías</div>`;
+}
+
+function elimRecFila(idx) { recLista.splice(idx,1); renderRecLista(); cargarFotosRec(); }
+
+// Agregar ítem manual a la rec
+const sugRec = document.getElementById('sug-rec');
+function buscarParaAgregar(q) {
+    if (q.length<2) { sugRec.style.display='none'; return; }
+    fetch(`/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).then(data => {
+        sugRec.innerHTML = '';
+        data.forEach(i => {
+            const base = datosCompletos.find(d=>d.item==i.ITEM);
+            const div = document.createElement('div');
+            div.className = 's-item';
+            div.innerHTML = `<b>${i.ITEM}</b> — ${i.Description} <span style="float:right;font-size:11px;color:#94a3b8;">${base?.cat||''}</span>`;
+            div.style.cssText = 'padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:13px;';
+            div.onmouseenter = ()=>div.style.background='#eff6ff';
+            div.onmouseleave = ()=>div.style.background='';
+            div.onclick = () => {
+                sugRec.style.display='none'; document.getElementById('rec-search-add').value='';
+                if (recLista.find(x=>x.item==i.ITEM)) return alert('Ya está en la lista.');
+                const item = base||{ item:i.ITEM, desc:i.Description, shortDesc:i['short desc']||'', cat:'MANUAL', totalActual:parseInt(i.STOCK)||0, vendido3m:0, ultimaFecha:'', ultimoInvoice:'', ultimoPrecio:'', vendor:'' };
+                const calc = calcRec(item);
+                recLista.push({ ...item, recUnidades:calc?calc.rec:1, ventasMes:calc?calc.ventasMes:0, diasDesdeUltimo:calc?calc.dias:null, pct:calc?calc.pct:0 });
+                // Mantener orden por categoría
+                recLista.sort((a,b)=>{ const ca=(a.cat||'').toUpperCase(),cb=(b.cat||'').toUpperCase(); return ca!==cb?ca.localeCompare(cb):b.recUnidades-a.recUnidades; });
+                renderRecLista(); cargarFotosRec();
+            };
+            sugRec.appendChild(div);
+        });
+        sugRec.style.display=data.length?'block':'none';
+    }).catch(()=>{});
+}
+document.addEventListener('click', e=>{ if(!e.target.closest('#rec-search-add')&&!e.target.closest('#sug-rec')) sugRec.style.display='none'; });
+
+// ── FOTOS REC ─────────────────────────────────────────────────
+async function cargarFotosRec() {
+    for (const r of recLista) {
+        if (recPhotoCache[r.item]!==undefined) { const el=document.getElementById('foto-rec-'+r.item); if(el&&recPhotoCache[r.item]) el.outerHTML=`<img class="foto-thumb-sm" src="${recPhotoCache[r.item]}" alt="${r.item}">`; continue; }
+        const el = document.getElementById('foto-rec-'+r.item); if(!el) continue;
+        try { const res=await fetch(`/api/foto/${encodeURIComponent(r.item)}`); const d=await res.json(); if(d.found){recPhotoCache[r.item]=d.url;el.outerHTML=`<img class="foto-thumb-sm" src="${d.url}" alt="${r.item}">`;} else recPhotoCache[r.item]=false; } catch(e){}
+    }
+}
+
+// ── EXPORTAR REC ──────────────────────────────────────────────
+function exportarRecCSV() {
+    if (!recLista.length) return alert('Lista vacía.');
+    let csv = 'CATEGORIA,ITEM,DESCRIPCION,SHORT_DESC,STOCK,VEND_3M,COB_PCT,PROM_MES,ULT_FECHA,ULT_INVOICE,PRECIO,VENDOR,PEDIR\n';
+    recLista.forEach(r => { csv+=`"${r.cat||''}","${r.item}","${(r.desc||'').replace(/"/g,'""')}","${(r.shortDesc||'').replace(/"/g,'""')}",${r.totalActual??''},${r.vendido3m},${r.pct},${r.ventasMes.toFixed(1)},"${r.ultimaFecha||''}","${r.ultimoInvoice||''}","${r.ultimoPrecio||''}","${r.vendor||''}",${r.recUnidades}\n`; });
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`Recomendacion_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+}
+
+function exportarRecPDF() {
+    if (!recLista.length) return alert('Lista vacía.');
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l','mm','a4');
+    doc.setFontSize(13); doc.text('Recomendación de Pedido — BetterDeals',14,14);
+    doc.setFontSize(9); doc.text(`${new Date().toLocaleString()} · ${recLista.length} ítems · ${recLista.reduce((s,r)=>s+(r.recUnidades||0),0)} unidades`,14,20);
+    doc.autoTable({
+        head:[['CATEGORÍA','ITEM','DESCRIPCIÓN','STOCK','VEND.3M','COB%','PROM/MES','ÚLT.FECHA','PRECIO','VENDOR','PEDIR']],
+        body: recLista.map(r=>[r.cat||'',r.item,(r.desc||'').substring(0,35),r.totalActual??'',r.vendido3m,r.pct+'%',r.ventasMes.toFixed(1),r.ultimaFecha||'',r.ultimoPrecio||'',r.vendor||'',r.recUnidades]),
+        startY:25, styles:{fontSize:7.5},
+        headStyles:{fillColor:[245,158,11]},
+        columnStyles:{10:{fillColor:[254,243,199],fontStyle:'bold'}},
+        didParseCell: d => { if(d.section==='body'&&d.column.index===0&&d.row.index>0){ const prev=recLista[d.row.index-1]?.cat||''; if(recLista[d.row.index]?.cat!==prev) d.cell.styles.fillColor=[241,245,249]; }}
+    });
+    doc.save(`Recomendacion_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+// ── REC INDIVIDUAL (botón fila) ───────────────────────────────
+function abrirRecItem(itemCode) {
+    itemActivo = itemCode;
+    const base = datosCompletos.find(d=>d.item==itemCode)||{ item:itemCode, desc:'', cat:'', totalActual:0, vendido3m:0, ultimaFecha:'', ultimoInvoice:'', ultimoPrecio:'', vendor:'', entradasTotales:0 };
+    const calc = calcRec(base);
+    document.getElementById('rec-item-sub').innerText = `${itemCode} — ${base.desc||''}`;
+    let html = '';
+    if (!calc) {
+        const razon = !base.ultimaFecha ? 'Sin fecha de ingreso' : (() => { const d=Math.floor((new Date()-new Date(base.ultimaFecha))/86400000); return d>365?`Último ingreso hace ${d} días (> 1 año)`:base.vendido3m===0?'Sin ventas en 3 meses':'Stock cubre los 3 meses'; })();
+        html = `<div class="alerta warn">⚠️ No se recomienda pedido: <b>${razon}</b></div>
+          <div class="rec-note"><b>Stock actual:</b> ${base.totalActual??'—'} · <b>Ventas 3m:</b> ${base.vendido3m} · <b>Último ingreso:</b> ${base.ultimaFecha||'—'} · <b>Vendor:</b> ${base.vendor||'—'}</div>`;
+    } else {
+        const cobColor = calc.pct<=25?'var(--red)':calc.pct<=50?'var(--orange)':'var(--green)';
+        html = `
+        <div class="rec-result"><div class="rr-num">${calc.rec}</div><div class="rr-lbl">Unidades recomendadas a pedir</div></div>
+        <div class="rec-grid">
+          <div class="rec-card"><div class="rc-num" style="color:var(--primary)">${calc.stock}</div><div class="rc-lbl">Stock actual</div></div>
+          <div class="rec-card"><div class="rc-num" style="color:var(--green)">${base.vendido3m}</div><div class="rc-lbl">Vendido 3 meses</div></div>
+          <div class="rec-card"><div class="rc-num" style="color:${cobColor}">${calc.pct}%</div><div class="rc-lbl">Cobertura actual</div></div>
+          <div class="rec-card"><div class="rc-num" style="color:var(--orange)">${calc.ventasMes.toFixed(1)}</div><div class="rc-lbl">Promedio/mes</div></div>
+          <div class="rec-card"><div class="rc-num" style="color:#475569">${calc.dias}</div><div class="rc-lbl">Días desde ingreso</div></div>
+          <div class="rec-card"><div class="rc-num" style="color:var(--purple)">${Math.round(calc.stock/Math.max(calc.ventasMes,0.1))}</div><div class="rc-lbl">Meses cobertura</div></div>
+        </div>
+        <div class="rec-note"><b>Último ingreso:</b> ${base.ultimaFecha||'—'} · <b>Invoice:</b> ${base.ultimoInvoice||'—'} · <b>Precio:</b> ${base.ultimoPrecio||'—'} · <b>Vendor:</b> ${base.vendor||'—'}</div>`;
+    }
+    document.getElementById('rec-item-body').innerHTML = html;
+    document.getElementById('modal-rec-item').classList.add('show');
+}
+
+// ── HISTORIAL (botón header) ──────────────────────────────────
+function abrirHistorial() {
+    if (!itemActivo) return alert('Haz click en el botón 📦 Hist de cualquier ítem en la tabla.');
+    abrirHistItem(itemActivo);
+}
+
+async function abrirHistItem(item) {
+    itemActivo = item;
+    document.getElementById('hist-sub').innerText = 'Cargando...';
+    document.getElementById('hist-body').innerHTML = '<div style="text-align:center;padding:30px;color:var(--purple);font-weight:700;">⏳ Cargando historial...</div>';
+    document.getElementById('modal-hist').classList.add('show');
+    try {
+        const r = await fetch(`/api/analytics/${encodeURIComponent(item)}`);
+        const d = await r.json();
+        if (d.error) { document.getElementById('hist-body').innerHTML=`<p style="color:red;">❌ ${d.error}</p>`; return; }
+        const desc = d.sold?.desc||d.ultimo?.longDesc||item;
+        document.getElementById('hist-sub').innerText = `${item} — ${desc}`;
+        if (!d.historial||!d.historial.length) { document.getElementById('hist-body').innerHTML='<div style="text-align:center;padding:30px;color:#94a3b8;"><div style="font-size:32px;margin-bottom:8px;">📭</div>Sin historial de entradas.</div>'; return; }
+        document.getElementById('hist-body').innerHTML = `
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+          <div class="rec-card" style="flex:1;min-width:110px;padding:12px;"><div class="rc-num" style="color:var(--primary)">${d.totalActual??'—'}</div><div class="rc-lbl">Stock actual</div></div>
+          <div class="rec-card" style="flex:1;min-width:110px;padding:12px;"><div class="rc-num" style="color:var(--green)">${d.sold?.total??0}</div><div class="rc-lbl">Vendido 3m</div></div>
+          <div class="rec-card" style="flex:1;min-width:110px;padding:12px;"><div class="rc-num" style="color:var(--purple)">${d.historial.length}</div><div class="rc-lbl">Entradas</div></div>
+          <div class="rec-card" style="flex:1;min-width:110px;padding:12px;"><div class="rc-num" style="color:var(--orange);font-size:16px;">${d.historial[0]?.fecha||'—'}</div><div class="rc-lbl">Última entrada</div></div>
+        </div>
+        <div style="overflow-x:auto;max-height:420px;overflow-y:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">FECHA</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">INVOICE</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">N# CARGA</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">VENDOR</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">UNIT PRICE</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">EXT PRICE</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">QTY</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">PÁG.</th>
+              <th style="background:#f8fafc;padding:9px 8px;font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid #e2e8f0;">DUTY</th>
+            </tr></thead>
+            <tbody>${d.historial.map(h=>`
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:8px;"><span class="fecha-badge">${h.fecha}</span></td>
+              <td style="padding:8px;"><span class="invoice-badge">${h.invoice}</span></td>
+              <td style="padding:8px;font-size:11px;color:#64748b;">${h.ncarga}</td>
+              <td style="padding:8px;font-size:11px;">${h.vendor}</td>
+              <td style="padding:8px;font-weight:700;color:var(--green);">${h.price}</td>
+              <td style="padding:8px;font-size:11px;color:#475569;">${h.extPrice}</td>
+              <td style="padding:8px;font-weight:700;text-align:center;">${h.qty}</td>
+              <td style="padding:8px;font-size:11px;color:#64748b;">${h.pagina}</td>
+              <td style="padding:8px;font-size:11px;color:#64748b;">${h.duty}</td>
+            </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch(e) { document.getElementById('hist-body').innerHTML=`<p style="color:red;">❌ ${e.message}</p>`; }
+}
+
+// ── EXPORTAR HISTORIAL CSV ────────────────────────────────────
+function exportarHistCSV() {
+    const rows = document.querySelectorAll('#hist-body tbody tr');
+    if (!rows.length) return;
+    let csv = 'FECHA,INVOICE,N#CARGA,VENDOR,UNIT_PRICE,EXT_PRICE,QTY,PAGINA,DUTY\n';
+    rows.forEach(tr => { const cells=[...tr.querySelectorAll('td')].map(td=>`"${td.innerText.trim().replace(/"/g,'""')}"`); csv+=cells.join(',')+'\n'; });
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`Historial_${itemActivo}_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+}
+
+// ── EXPORTAR TABLA CSV ────────────────────────────────────────
+function exportarCSVTabla() {
+    if (!datosFiltrados.length) return alert('Carga la tabla primero.');
+    let csv = 'CAT,ITEM,DESC,STOCK_TOTAL,VENDIDO_3M,ULTIMA_FECHA,ULTIMO_INVOICE,ULTIMO_PRECIO,VENDOR,ENTRADAS\n';
+    datosFiltrados.forEach(r => { csv+=`"${r.cat||''}","${r.item}","${(r.desc||'').replace(/"/g,'""')}",${r.totalActual??''},${r.vendido3m},"${r.ultimaFecha||''}","${r.ultimoInvoice||''}","${r.ultimoPrecio||''}","${r.vendor||''}",${r.entradasTotales}\n`; });
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); a.download=`Analitica_${new Date().toISOString().split('T')[0]}.csv`; a.click();
+}
+
+// ── HELPERS ───────────────────────────────────────────────────
+function cerrarModal(id) { document.getElementById(id).classList.remove('show'); }
+function fmtFecha(iso) { try { return new Date(iso).toLocaleString(); } catch(e) { return iso; } }
+
+['modal-rec','modal-rec-item','modal-hist'].forEach(id => {
+    document.getElementById(id).addEventListener('click', function(e) { if(e.target===this) cerrarModal(id); });
+});
+</script>
+</body>
+</html>
