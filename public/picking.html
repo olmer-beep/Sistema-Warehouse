@@ -104,26 +104,21 @@
     let itemsPicking = JSON.parse(localStorage.getItem('picking_data')) || [];
     const sInput = document.getElementById('search-input');
     const sugBox = document.getElementById('sug-box');
-
-    // ── AUTO-SYNC ──
     const DEV_ID = 'p-' + Math.random().toString(36).substr(2,6);
     let sseConn = null, pushTimer = null;
 
+    // Conexión Sync mejorada para no interrumpir edición activa
     function conectarSync() {
         if (sseConn) return;
         sseConn = new EventSource('/api/sync/stream/picking');
-        let primerMensaje = true;
         sseConn.onmessage = (e) => {
+            // No actualizar si el usuario está escribiendo en algún input
+            if (document.activeElement.tagName === 'INPUT') return;
+            
             try {
                 const d = JSON.parse(e.data);
-                if (!d.items) return;
-                // Si es el primer mensaje al conectar Y ya tenemos datos locales → ignorar
-                // (evita que el estado del servidor sobreescriba una lista recién exportada)
-                if (primerMensaje) {
-                    primerMensaje = false;
-                    if (itemsPicking.length > 0 && d.deviceId !== 'pedidos-export') return;
-                }
-                if (d.deviceId === DEV_ID) return;
+                if (!d.items || d.deviceId === DEV_ID) return;
+                
                 itemsPicking = d.items;
                 localStorage.setItem('picking_data', JSON.stringify(itemsPicking));
                 renderTable();
@@ -143,14 +138,22 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ items: itemsPicking, deviceId: DEV_ID })
             }).catch(() => {});
-        }, 300);
+        }, 500);
     }
 
     window.onload = () => { renderTable(); conectarSync(); };
 
     function guardarLocal() {
         localStorage.setItem('picking_data', JSON.stringify(itemsPicking));
+        actualizarContadores(); // Solo actualiza números, no redibuja toda la tabla
         pushSync();
+    }
+
+    function actualizarContadores() {
+        document.getElementById('count-total').innerText = itemsPicking.length;
+        document.getElementById('count-checked').innerText = itemsPicking.filter(x => x.checked).length;
+        document.getElementById('count-pending').innerText = itemsPicking.filter(x => !x.checked).length;
+        document.getElementById('btn-confirm-final').style.display = itemsPicking.length > 0 ? 'block' : 'none';
     }
 
     function limpiarLista() {
@@ -158,6 +161,7 @@
             itemsPicking = [];
             localStorage.removeItem('picking_data');
             renderTable();
+            pushSync();
         }
     }
 
@@ -220,17 +224,15 @@
         reader.readAsText(file);
     }
 
-    // Cache de fotos: item → url | false | undefined
     const photoCache = {};
-
     function fotoHtml(item) {
-        if (photoCache[item])           return `<img class="foto-thumb" src="${photoCache[item]}" alt="${item}">`;
+        if (photoCache[item]) return `<img class="foto-thumb" src="${photoCache[item]}" alt="${item}">`;
         if (photoCache[item] === false) return `<div class="foto-empty">📦</div>`;
         return `<div class="foto-empty" id="foto-p-${item}">📦</div>`;
     }
 
+    // RenderTable ahora solo se llama en cambios estructurales (borrar, añadir, ordenar, cargar inicial)
     function renderTable() {
-        // Ordenar siempre por locación (vacíos al final)
         itemsPicking.sort((a, b) => {
             const la = (a.loc || '').toUpperCase();
             const lb = (b.loc || '').toUpperCase();
@@ -239,6 +241,7 @@
             if (!lb) return -1;
             return la.localeCompare(lb);
         });
+        
         const body = document.getElementById('lista-body');
         body.innerHTML = '';
         itemsPicking.forEach((it, idx) => {
@@ -251,32 +254,58 @@
                 cajas = bn1_proyectado > 0 ? llenas + 1 : llenas;
             }
             body.innerHTML += `
-                <tr style="${it.checked ? 'background:#fef2f2':''}">
-                    <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="itemsPicking[${idx}].checked=this.checked; guardarLocal(); renderTable()"></td>
+                <tr id="tr-${idx}" style="${it.checked ? 'background:#fef2f2':''}">
+                    <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="actualizarDato(${idx}, 'checked', this.checked)"></td>
                     <td>${fotoHtml(it.item)}</td>
                     <td><b>${it.item}</b></td>
                     <td><span style="font-size:13px; font-weight:600; color:#1e293b;">${it.desc}</span>${it.shortDesc ? `<div style="font-size:11px; color:#64748b; margin-top:2px;">${it.shortDesc}</div>` : ''}</td>
-                    <td><input type="text" class="loc-input" value="${it.loc}" onchange="itemsPicking[${idx}].loc=this.value.toUpperCase(); guardarLocal()"></td>
+                    <td><input type="text" class="loc-input" value="${it.loc}" onchange="actualizarDato(${idx}, 'loc', this.value.toUpperCase())"></td>
                     <td style="color:#64748b; font-weight:bold;">${it.stockActual}</td>
-                    <td><input type="number" class="input-qty input-mc" value="${it.mc_val}" onchange="itemsPicking[${idx}].mc_val=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
-                    <td style="text-align:center; font-weight:800; color:var(--red); font-size:16px;">${cajas}</td>
-                    <td style="text-align:center; font-weight:800; color:var(--accent); font-size:16px;">${bn1_proyectado}</td>
-                    <td><input type="number" class="input-qty" style="border-color:var(--red)" value="${it.cant_a_sacar}" onchange="itemsPicking[${idx}].cant_a_sacar=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
-                    <td><span class="stock-out">${stockFinal}</span></td>
-                    <td><button class="btn-del" onclick="itemsPicking.splice(${idx},1); guardarLocal(); renderTable()">✕</button></td>
+                    <td><input type="number" class="input-qty input-mc" value="${it.mc_val}" onchange="actualizarDato(${idx}, 'mc_val', parseInt(this.value)||0)"></td>
+                    <td id="cajas-${idx}" style="text-align:center; font-weight:800; color:var(--red); font-size:16px;">${cajas}</td>
+                    <td id="bn1-${idx}" style="text-align:center; font-weight:800; color:var(--accent); font-size:16px;">${bn1_proyectado}</td>
+                    <td><input type="number" class="input-qty" style="border-color:var(--red)" value="${it.cant_a_sacar}" onchange="actualizarDato(${idx}, 'cant_a_sacar', parseInt(this.value)||0)"></td>
+                    <td><span id="final-${idx}" class="stock-out">${stockFinal}</span></td>
+                    <td><button class="btn-del" onclick="eliminarFila(${idx})">✕</button></td>
                 </tr>`;
         });
-        document.getElementById('count-total').innerText   = itemsPicking.length;
-        document.getElementById('count-checked').innerText  = itemsPicking.filter(x => x.checked).length;
-        document.getElementById('count-pending').innerText  = itemsPicking.filter(x => !x.checked).length;
-        document.getElementById('btn-confirm-final').style.display = itemsPicking.length > 0 ? 'block' : 'none';
-        guardarLocal();
+        actualizarContadores();
         cargarFotosTabla();
+    }
+
+    // Nueva función para actualizar datos sin romper el foco del teclado ni redibujar todo
+    function actualizarDato(idx, campo, valor) {
+        itemsPicking[idx][campo] = valor;
+        
+        // Recalcular valores visuales de esa fila
+        const it = itemsPicking[idx];
+        const stockFinal = it.stockActual - it.cant_a_sacar;
+        const mc = it.mc_val || 0;
+        let cajas = 0, bn1 = stockFinal;
+        if (mc > 0) {
+            let llenas = Math.floor(stockFinal / mc);
+            bn1 = stockFinal % mc;
+            cajas = bn1 > 0 ? llenas + 1 : llenas;
+        }
+
+        // Actualizar solo los elementos de texto necesarios en el DOM
+        document.getElementById(`cajas-${idx}`).innerText = cajas;
+        document.getElementById(`bn1-${idx}`).innerText = bn1;
+        document.getElementById(`final-${idx}`).innerText = stockFinal;
+        document.getElementById(`tr-${idx}`).style.background = it.checked ? '#fef2f2' : '';
+        
+        guardarLocal();
+    }
+
+    function eliminarFila(idx) {
+        itemsPicking.splice(idx, 1);
+        renderTable();
+        guardarLocal();
     }
 
     async function cargarFotosTabla() {
         for (const it of itemsPicking) {
-            if (photoCache[it.item] !== undefined) continue; // ya sabemos el resultado
+            if (photoCache[it.item] !== undefined) continue;
             const el = document.getElementById('foto-p-' + it.item);
             if (!el) continue;
             try {
@@ -295,12 +324,14 @@
     async function confirmarSalida() {
         if (itemsPicking.length === 0) return alert("No hay ítems en la lista de picking.");
         if (!confirm("¿Confirmar salida de mercancía? Se restará del stock del Excel.")) return;
+        
         const dataEnviar = itemsPicking.map(it => ({
             item: it.item,
             pick: parseInt(it.cant_a_sacar) || 0,
             mc_val: parseInt(it.mc_val) || 0,
             loc: it.loc || ""
         }));
+
         try {
             const res = await fetch('/api/process-bulk-picking', {
                 method: 'POST',
@@ -311,7 +342,9 @@
                 alert("✅ ¡SALIDA PROCESADA! Stock descontado con éxito.");
                 itemsPicking = [];
                 localStorage.removeItem('picking_data');
+                // IMPORTANTE: Limpiamos la tabla visualmente y notificamos al servidor
                 renderTable();
+                pushSync(); 
             } else {
                 alert("❌ Error al procesar la salida.");
             }

@@ -500,9 +500,10 @@ app.post('/api/upload-costos',
                     price:    (c[idx.price]||'').trim(),
                     ncarga:   (c[idx.ncarga]||'').trim(),
                     fecha:    (c[idx.fecha]||'').trim(),
+                    ship:     parseInt(c[idx.ship]) || 0,
+                    control:  parseInt(c[idx.control]) || 0,
                     qty:      parseInt(c[idx.qty]) || 0,
                     cat:      (c[idx.cat]||'').trim(),
-                    extPrice: (c[idx.extPrice]||'').trim(),
                 };
                 if (!map[item]) map[item] = [];
                 map[item].push(row);
@@ -576,17 +577,18 @@ app.get('/api/analytics-all', async (req, res) => {
 
             result.push({
                 item,
-                desc:        s ? s.desc : (ult ? ult.longDesc : ''),
-                cat:         ult ? ult.cat : '',
-                totalActual: m ? (parseInt(m.ALL) || 0) : null,
-                vendido3m:   s ? s.total : 0,
-                stMaria:     s ? s.stMaria : 0,
-                salina:      s ? s.salina : 0,
-                ultimaFecha: ult ? ult.fecha : '',
-                ultimoInvoice: ult ? ult.invoice : '',
-                ultimoPrecio:  ult ? ult.price : '',
-                ultimoNCarga:  ult ? ult.ncarga : '',
-                vendor:        ult ? ult.vendor : '',
+                desc:            s ? s.desc : (ult ? ult.longDesc : ''),
+                cat:             ult ? ult.cat : '',
+                totalActual:     m ? (parseInt(m.ALL) || 0) : null,
+                vendido3m:       s ? s.total : 0,
+                stMaria:         s ? s.stMaria : 0,
+                salina:          s ? s.salina : 0,
+                ultimaFecha:     ult ? ult.fecha : '',
+                ultimoInvoice:   ult ? ult.invoice : '',
+                ultimoPrecio:    ult ? ult.price : '',
+                ultimoNCarga:    ult ? ult.ncarga : '',
+                vendor:          ult ? ult.vendor : '',
+                qtyLastInv:      ult ? ult.qty : 0,
                 entradasTotales: hist.length
             });
         }
@@ -596,75 +598,83 @@ app.get('/api/analytics-all', async (req, res) => {
 });
 
 // ================================================================
-// CSV COMPARA PRECIO (fuente principal para recomendaciones)
+// INVOICES: lista de invoices únicos + items por invoice
 // ================================================================
-const COMPARA_PATH = path.join(__dirname, 'compara_precio.json');
+app.get('/api/invoices-list', async (req, res) => {
+    try {
+        if (!fs.existsSync(COSTOS_PATH)) return res.json({ loaded: false, invoices: [] });
+        const costos = JSON.parse(fs.readFileSync(COSTOS_PATH, 'utf8')).map;
 
-app.post('/api/upload-compara',
-    express.raw({ limit: '50mb', type: () => true }),
-    (req, res) => {
-        try {
-            let txt = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body);
-            if (txt.charCodeAt(0) === 0xFEFF) txt = txt.substring(1);
-            const lines = txt.split(/\r?\n/).filter(l => l.trim());
-            const header = splitCSVLineSrv(lines[0]);
-            const map = {};
-            let count = 0;
-            for (let i = 1; i < lines.length; i++) {
-                const c = splitCSVLineSrv(lines[i]);
-                if (!c || c.length < 6) continue;
-                const item = (c[2]||'').trim(); // col C = ITEM
-                if (!item) continue;
-                map[item] = {
-                    cat:          (c[0]||'').trim(),   // A CATEG
-                    shortD:       (c[1]||'').trim(),   // B SHORT D
-                    desc:         (c[3]||'').trim(),   // D DESCRIPCION
-                    invoice:      (c[4]||'').trim(),   // E INVOICE
-                    qtyLastInv:   parseFloat(c[5])||0, // F QTY LAST INV
-                    duty:         (c[6]||'').trim(),   // G DUTY
-                    page:         (c[7]||'').trim(),   // H PAGE
-                    vendor:       (c[8]||'').trim(),   // I VENDOR
-                    ncarga:       (c[9]||'').trim(),   // J N# CARGA
-                    dateLastIn:   (c[10]||'').trim(),  // K DATE LAST IN
-                    priceLastIn:  (c[11]||'').trim(),  // L UNIT PRICE LAST IN
-                    currentPrice: (c[12]||'').trim(),  // M CURRENT PRICE
-                    inventario:   parseFloat(c[18])||0,// S INVENTARIO NETO
-                    ventas3m:     parseFloat(c[19])||0,// T last 3 month sold
-                    lastDaysSold: (c[20]||'').trim(),  // U LAST DAYS SOLD
-                    loc:          (c[21]||'').trim(),  // V LOC
-                    margen:       (c[34]||'').trim(),  // AI MARGEN
-                    lastCost:     (c[35]||'').trim(),  // AJ LAST COST
-                    priceVenta:   (c[36]||'').trim(),  // AK PRICE VENTA
-                };
-                count++;
+        // Construir mapa de invoices: invoice → {vendor, fecha, ncarga, items[], totalPrice}
+        const invMap = {};
+        for (const [item, entradas] of Object.entries(costos)) {
+            for (const e of entradas) {
+                const inv = e.invoice;
+                if (!inv) continue;
+                if (!invMap[inv]) {
+                    invMap[inv] = { invoice: inv, vendor: e.vendor, fecha: e.fecha, ncarga: e.ncarga, duty: e.duty, totalExt: 0, totalTax: 0, totalItems: 0 };
+                }
+                const precio = parseFloat((e.price||'').replace(/[$,]/g,'')) || 0;
+                const qty = e.ship || e.qty || 0;
+                invMap[inv].totalExt += precio * qty;
+                invMap[inv].totalItems++;
             }
-            fs.writeFileSync(COMPARA_PATH, JSON.stringify({ map, updatedAt: new Date().toISOString(), total: count }));
-            res.json({ success: true, total: count, updatedAt: new Date().toISOString() });
-        } catch(e) { res.status(500).json({ error: e.message }); }
-    }
-);
+        }
 
-app.get('/api/compara-status', (req, res) => {
-    if (!fs.existsSync(COMPARA_PATH)) return res.json({ loaded: false });
-    try {
-        const d = JSON.parse(fs.readFileSync(COMPARA_PATH, 'utf8'));
-        res.json({ loaded: true, total: d.total, updatedAt: d.updatedAt });
+        const invoices = Object.values(invMap).sort((a,b) => new Date(b.fecha) - new Date(a.fecha));
+        res.json({ loaded: true, invoices });
     } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/compara-all', (req, res) => {
-    if (!fs.existsSync(COMPARA_PATH)) return res.json({ loaded: false, map: {} });
+app.get('/api/invoices-items/:invoice', async (req, res) => {
     try {
-        const d = JSON.parse(fs.readFileSync(COMPARA_PATH, 'utf8'));
-        res.json({ loaded: true, map: d.map });
-    } catch(e) { res.status(500).json({ error: e.message }); }
-});
+        if (!fs.existsSync(COSTOS_PATH)) return res.json({ loaded: false, items: [] });
+        const costosData = JSON.parse(fs.readFileSync(COSTOS_PATH, 'utf8'));
+        const costos  = costosData.map;
+        const sold    = fs.existsSync(SOLD_PATH) ? JSON.parse(fs.readFileSync(SOLD_PATH,'utf8')).map : {};
+        const maestro = await getWarehouseMap();
+        const invTarget = req.params.invoice;
 
-app.get('/api/compara/:item', (req, res) => {
-    if (!fs.existsSync(COMPARA_PATH)) return res.json(null);
-    try {
-        const d = JSON.parse(fs.readFileSync(COMPARA_PATH, 'utf8'));
-        res.json(d.map[req.params.item.trim()] || null);
+        // Datos del invoice (vendor, fecha, ncarga desde la primera entrada encontrada)
+        let invMeta = {};
+        const items = [];
+
+        for (const [item, entradas] of Object.entries(costos)) {
+            const entrada = entradas.find(e => e.invoice === invTarget);
+            if (!entrada) continue;
+
+            if (!invMeta.invoice) {
+                invMeta = { invoice: invTarget, vendor: entrada.vendor, fecha: entrada.fecha, ncarga: entrada.ncarga, duty: entrada.duty };
+            }
+
+            const s = sold[item] || null;
+            const m = maestro[item] || null;
+            const precio = parseFloat((entrada.price||'').replace(/[$,]/g,'')) || 0;
+            const margen = m ? (parseFloat((m.Margin||m['Margin(S)']||m.MARGIN||'').replace(/[%,]/g,'')) || null) : null;
+            const priceSold = m ? (parseFloat((m.Price||m['Price(R)']||'').replace(/[$,]/g,'')) || null) : null;
+            const lastSold = m ? (m['Last Sold Date']||m['Last Sold Date(P)']||'') : '';
+
+            items.push({
+                item,
+                shortDesc:  entrada.shortD || '',
+                longDesc:   entrada.longDesc || '',
+                ship:       entrada.ship || 0,
+                control:    entrada.control || 0,
+                price:      entrada.price || '',
+                extPrice:   precio * (entrada.ship || entrada.qty || 0),
+                pagina:     entrada.pagina || '',
+                duty:       entrada.duty || '',
+                cat:        entrada.cat || '',
+                qtyCurrent: m ? (parseInt(m.ALL||m['ALL(F)']) || 0) : null,
+                priceSold, lastSold, margen,
+                vendido3m:  s ? s.total : 0,
+            });
+        }
+
+        invMeta.totalExt   = items.reduce((s,i) => s + i.extPrice, 0);
+        invMeta.totalItems = items.length;
+
+        res.json({ loaded: true, items, invoice: invMeta });
     } catch(e) { res.status(500).json({ error: e.message }); }
 });
 

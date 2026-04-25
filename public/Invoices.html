@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoices - BetterDeals</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+<style>
+:root{--primary:#1e40af;--green:#059669;--red:#ef4444;--orange:#f59e0b;--purple:#7c3aed;--bg:#f1f5f9;--border:#e2e8f0;--text:#1e293b;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+
+/* TOPBAR */
+.topbar{background:var(--primary);color:white;padding:0 18px;display:flex;align-items:center;gap:12px;height:44px;flex-shrink:0;}
+.topbar a{color:rgba(255,255,255,0.75);text-decoration:none;font-size:12px;font-weight:700;white-space:nowrap;}
+.topbar h1{font-size:14px;font-weight:800;white-space:nowrap;}
+.topbar .tag{background:rgba(255,255,255,0.15);padding:3px 9px;border-radius:10px;font-size:9px;font-weight:700;}
+.topbar-spacer{flex:1;}
+.topbar .info{font-size:10px;opacity:0.7;}
+
+/* BÚSQUEDA GLOBAL DE VENDEDOR */
+.vendor-bar{background:#0f2057;padding:7px 18px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.vendor-bar label{font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);white-space:nowrap;}
+.vendor-bar input{flex:1;max-width:360px;padding:7px 12px;border-radius:7px;border:2px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.1);color:white;font-size:12px;font-weight:600;}
+.vendor-bar input::placeholder{color:rgba(255,255,255,0.4);}
+.vendor-bar input:focus{outline:none;border-color:rgba(255,255,255,0.6);}
+.vendor-bar .vendor-tags{display:flex;gap:6px;flex-wrap:wrap;}
+.vtag{background:rgba(255,255,255,0.15);color:white;padding:4px 10px;border-radius:12px;font-size:10px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,0.2);transition:0.15s;}
+.vtag:hover,.vtag.active{background:var(--orange);border-color:var(--orange);color:#1e293b;}
+
+/* LAYOUT 3 PANELES */
+.main{display:grid;grid-template-columns:300px 1fr 370px;flex:1;overflow:hidden;}
+
+/* PANEL BASE */
+.panel{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border);}
+.panel-header{padding:9px 13px;border-bottom:1px solid var(--border);flex-shrink:0;background:white;}
+.panel-title{font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;}
+.panel-sub{font-size:10px;color:#94a3b8;margin-top:1px;}
+.panel-search{padding:7px 10px;border-bottom:1px solid var(--border);background:#f8fafc;flex-shrink:0;}
+.panel-search input{width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:white;}
+.panel-search input:focus{outline:none;border-color:var(--primary);}
+.panel-body{flex:1;overflow-y:auto;background:white;}
+
+/* ── PANEL IZQUIERDO: LISTA INVOICES ── */
+.inv-row{padding:9px 13px;border-bottom:1px solid #f1f5f9;cursor:pointer;transition:0.1s;position:relative;}
+.inv-row:hover{background:#f0f9ff;}
+.inv-row.active{background:#eff6ff;border-left:3px solid var(--primary);}
+.inv-row.year-current{border-left:3px solid var(--orange);}
+.inv-row.year-current.active{border-left:3px solid var(--primary);}
+.inv-year-badge{position:absolute;top:9px;right:10px;background:var(--orange);color:#1e293b;padding:1px 6px;border-radius:8px;font-size:9px;font-weight:800;}
+.inv-num{font-weight:800;font-size:12px;color:var(--primary);}
+.inv-vendor{font-size:10px;font-weight:600;color:#475569;margin-top:1px;}
+.inv-meta-row{display:flex;gap:8px;margin-top:3px;align-items:center;flex-wrap:wrap;}
+.inv-fecha{font-size:10px;color:#94a3b8;}
+.inv-qtag{padding:1px 6px;border-radius:8px;font-size:9px;font-weight:800;background:#f1f5f9;color:#475569;}
+.inv-qtag.q1{background:#dbeafe;color:#1e40af;}
+.inv-qtag.q2{background:#dcfce7;color:#166534;}
+.inv-qtag.q3{background:#fef3c7;color:#92400e;}
+.inv-qtag.q4{background:#fce7f3;color:#be185d;}
+.inv-price-row{display:flex;justify-content:space-between;margin-top:3px;}
+.inv-price-usd{font-size:10px;font-weight:700;color:var(--green);}
+.inv-price-xcg{font-size:10px;font-weight:600;color:#7c3aed;}
+
+/* ── PANEL CENTRAL: ITEMS DEL INVOICE ── */
+.items-table-wrap{overflow-x:auto;}
+.items-table{width:100%;border-collapse:collapse;font-size:11px;}
+.items-table th{background:#f8fafc;padding:7px 8px;text-align:left;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:2px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:2;}
+.items-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+.items-table tr{cursor:pointer;transition:0.1s;}
+.items-table tr:hover{background:#f0f9ff;}
+.items-table tr.active{background:#eff6ff;}
+.foto-cell{width:42px;height:42px;object-fit:contain;border-radius:5px;filter:contrast(1.08) saturate(1.1);}
+.foto-cell-empty{width:42px;height:42px;background:#f1f5f9;border-radius:5px;display:flex;align-items:center;justify-content:center;color:#cbd5e1;font-size:14px;}
+.badge-item{font-weight:800;color:var(--primary);font-size:11px;}
+.badge-cat{background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;}
+.ship-ctrl{text-align:center;font-weight:800;font-size:12px;}
+
+/* ── PANEL DERECHO: DETALLE ── */
+.right-panel{display:flex;flex-direction:column;overflow:hidden;border-right:none;}
+.inv-header-card{background:linear-gradient(135deg,#1e40af,#3b82f6);color:white;padding:13px 14px;flex-shrink:0;}
+.inv-hdr-row{display:flex;justify-content:space-between;align-items:flex-start;}
+.inv-hdr-num{font-size:17px;font-weight:800;}
+.inv-hdr-vendor{font-size:12px;font-weight:700;opacity:0.9;}
+.inv-hdr-meta{font-size:10px;opacity:0.75;margin-top:3px;}
+.inv-qtag-big{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800;}
+.inv-stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);flex-shrink:0;}
+.inv-stat{background:white;padding:8px 10px;text-align:center;}
+.inv-stat .n{font-size:14px;font-weight:800;line-height:1;}
+.inv-stat .l{font-size:8px;color:#94a3b8;font-weight:700;text-transform:uppercase;margin-top:2px;}
+
+/* ITEM DETALLE */
+.item-detail{flex:1;overflow-y:auto;background:white;padding:14px;}
+.item-foto-lg{width:100%;aspect-ratio:4/3;background:#f8fafc;border-radius:10px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;margin-bottom:12px;overflow:hidden;}
+.item-foto-lg img{max-width:100%;max-height:100%;object-fit:contain;filter:contrast(1.08) saturate(1.1);}
+.item-title{font-size:13px;font-weight:800;margin-bottom:2px;}
+.item-sub{font-size:10px;color:#64748b;margin-bottom:12px;}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.dc{background:#f8fafc;border-radius:7px;padding:10px;border:1px solid var(--border);}
+.dc .l{font-size:8px;font-weight:800;color:#94a3b8;text-transform:uppercase;margin-bottom:3px;}
+.dc .v{font-size:15px;font-weight:800;}
+.detail-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:11px;}
+.detail-row:last-child{border-bottom:none;}
+.dr-l{color:#64748b;font-weight:600;}
+.dr-v{font-weight:700;}
+.margen-bar{width:100%;height:7px;background:#f1f5f9;border-radius:3px;overflow:hidden;margin-top:3px;}
+.margen-fill{height:100%;border-radius:3px;transition:width 0.4s;}
+.no-data{text-align:center;padding:30px 14px;color:#94a3b8;}
+.no-data .icon{font-size:32px;margin-bottom:8px;}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:#f1f5f9;}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
+
+/* STATUS */
+.status-bar{background:#1e293b;color:rgba(255,255,255,0.6);font-size:10px;padding:3px 14px;flex-shrink:0;display:flex;gap:14px;align-items:center;}
+.sdot{width:5px;height:5px;border-radius:50%;background:#475569;display:inline-block;margin-right:4px;}
+.sdot.ok{background:var(--green);}
+.btn-dl{padding:4px 9px;border:none;border-radius:5px;font-weight:700;cursor:pointer;font-size:10px;display:inline-flex;align-items:center;gap:3px;transition:0.15s;min-height:28px;}
+.btn-dl:hover{filter:brightness(1.1);}
+.btn-dl:disabled{opacity:0.4;pointer-events:none;}
+.btn-dl-pdf{background:var(--red);color:white;}
+.btn-dl-csv{background:#1e293b;color:white;}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <a href="index.html">⬅ VOLVER</a>
+  <div style="width:1px;height:16px;background:rgba(255,255,255,0.25);"></div>
+  <h1>📦 Explorador de Invoices</h1>
+  <div class="tag">CSV Historial de Costos</div>
+  <div class="topbar-spacer"></div>
+  <span class="info" id="topbar-info">Cargando…</span>
+</div>
+
+<!-- BARRA DE BÚSQUEDA POR VENDEDOR -->
+<div class="vendor-bar">
+  <label>🏪 VENDEDOR:</label>
+  <input type="text" id="vendor-input" placeholder="Escribe el nombre del vendedor…" oninput="buscarPorVendedor(this.value)">
+  <div class="vendor-tags" id="vendor-tags"></div>
+</div>
+
+<!-- MAIN 3 PANELES -->
+<div class="main">
+
+  <!-- PANEL 1: LISTA INVOICES -->
+  <div class="panel">
+    <div class="panel-header">
+      <div class="panel-title">📋 TUR Invoice — 2021 al día</div>
+      <div class="panel-sub" id="inv-count">—</div>
+    </div>
+    <div class="panel-search">
+      <input type="text" id="inv-search" placeholder="🔍 Buscar invoice, fecha, N# carga…" oninput="filtrarInvoices(this.value)">
+    </div>
+    <div class="panel-body" id="inv-list">
+      <div class="no-data"><div class="icon">⏳</div>Cargando…</div>
+    </div>
+  </div>
+
+  <!-- PANEL 2: ITEMS / INVOICES DEL VENDEDOR -->
+  <div class="panel">
+    <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div>
+        <div class="panel-title" id="mid-title">📦 Selecciona un Invoice</div>
+        <div class="panel-sub" id="mid-sub">Haz click en un invoice para ver sus ítems</div>
+      </div>
+      <div id="mid-btns" style="display:none;display:flex;gap:5px;flex-shrink:0;"></div>
+    </div>
+    <div class="panel-search">
+      <input type="text" id="mid-search" placeholder="🔍 Buscar ítem…" oninput="filtrarMid(this.value)">
+    </div>
+    <div class="panel-body" id="mid-body">
+      <div class="no-data"><div class="icon">👈</div>Selecciona un invoice</div>
+    </div>
+  </div>
+
+  <!-- PANEL 3: DETALLE -->
+  <div class="right-panel panel">
+    <div id="inv-header-area">
+      <div style="padding:30px;text-align:center;color:#94a3b8;font-size:12px;background:#f8fafc;">Selecciona un invoice</div>
+    </div>
+    <div class="item-detail" id="item-detail">
+      <div class="no-data"><div class="icon">📦</div>Selecciona un ítem</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar">
+  <span><span class="sdot" id="dot-costos"></span><span id="st-costos">CSV Costos: no cargado</span></span>
+  <span><span class="sdot" id="dot-maestro"></span><span id="st-maestro">Maestro: —</span></span>
+  <span id="st-active" style="margin-left:auto;"></span>
+</div>
+
+<script>
+const XCG_RATE = 1.82; // 1 USD = 1.82 XCG flórin
+
+let todosInvoices = [], invFiltrados = [];
+let itemsActuales = [], itemsFiltrados = [];
+let vendorActivo = '', invoiceActivo = null, itemActivo = null;
+let modoVendor = false; // true = panel mid muestra facturas del vendedor
+const photoCache = {};
+const AÑO_ACTUAL = new Date().getFullYear().toString();
+
+function trimestre(fecha) {
+    if (!fecha) return '';
+    const m = new Date(fecha).getMonth() + 1;
+    if (m<=3) return 'Q1'; if (m<=6) return 'Q2'; if (m<=9) return 'Q3'; return 'Q4';
+}
+function qClass(q) { return {Q1:'q1',Q2:'q2',Q3:'q3',Q4:'q4'}[q]||''; }
+function xcg(usd) { return (usd * XCG_RATE).toLocaleString('en',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+// ── INIT ──────────────────────────────────────────────────────
+window.onload = async () => {
+    try {
+        const r = await fetch('/api/invoices-list');
+        const d = await r.json();
+        if (!d.loaded) {
+            document.getElementById('inv-list').innerHTML=`<div class="no-data"><div class="icon">📂</div><div style="font-size:12px;font-weight:700;color:#1e293b;margin-bottom:8px;">CSV de Costos no cargado</div><div style="font-size:11px;color:#64748b;margin-bottom:12px;">Sube el archivo en <b>Analítica</b></div><a href="analitica.html" style="background:var(--purple);color:white;padding:8px 16px;border-radius:7px;font-size:12px;font-weight:700;text-decoration:none;">📊 Ir a Analítica</a></div>`;
+            return;
+        }
+        todosInvoices = d.invoices;
+        invFiltrados  = [...todosInvoices];
+        document.getElementById('topbar-info').innerText = `${todosInvoices.length} invoices`;
+        document.getElementById('inv-count').innerText   = `${todosInvoices.length} invoices`;
+        document.getElementById('dot-costos').className  = 'sdot ok';
+        document.getElementById('st-costos').innerText   = `CSV Costos: ${todosInvoices.length} invoices`;
+
+        // Vendors únicos para tags rápidos (top 8 más frecuentes)
+        const vCount = {};
+        todosInvoices.forEach(i=>{ vCount[i.vendor]=(vCount[i.vendor]||0)+1; });
+        const topVendors = Object.entries(vCount).sort((a,b)=>b[1]-a[1]).slice(0,8).map(v=>v[0]);
+        document.getElementById('vendor-tags').innerHTML = topVendors.map(v=>
+            `<div class="vtag" onclick="clickVendorTag('${v.replace(/'/g,"\\'")}','${v.replace(/'/g,"\\'")}')">` +
+            `${v} <span style="opacity:0.6;">${vCount[v]}</span></div>`
+        ).join('');
+
+        renderInvList();
+    } catch(e) {
+        document.getElementById('inv-list').innerHTML=`<div class="no-data"><div class="icon">❌</div>${e.message}</div>`;
+    }
+    try {
+        const r2 = await fetch('/api/warehouse-status');
+        const d2 = await r2.json();
+        if (d2.loaded) { document.getElementById('dot-maestro').className='sdot ok'; document.getElementById('st-maestro').innerText='Maestro: cargado ✓'; }
+    } catch(e){}
+};
+
+// ── LISTA DE INVOICES ─────────────────────────────────────────
+function renderInvList() {
+    const list = document.getElementById('inv-list');
+    if (!invFiltrados.length) { list.innerHTML='<div class="no-data"><div class="icon">🔍</div>Sin resultados</div>'; return; }
+    const añoActual = new Date().getFullYear();
+    list.innerHTML = invFiltrados.map(inv => {
+        const q = trimestre(inv.fecha);
+        const año = inv.fecha ? new Date(inv.fecha).getFullYear() : 0;
+        const esActual = año === añoActual;
+        const usd = inv.totalExt||0;
+        return `<div class="inv-row ${invoiceActivo===inv.invoice?'active':''} ${esActual?'year-current':''}" onclick="selInvoice('${inv.invoice}')">
+          ${esActual?`<div class="inv-year-badge">${añoActual}</div>`:''}
+          <div class="inv-num">${inv.invoice}</div>
+          <div class="inv-vendor">${inv.vendor||'—'}</div>
+          <div class="inv-meta-row">
+            <span class="inv-fecha">${inv.fecha||'—'}</span>
+            ${q?`<span class="inv-qtag ${qClass(q)}">${q}</span>`:''}
+            <span style="font-size:9px;color:#94a3b8;">${inv.ncarga||''}</span>
+          </div>
+          <div class="inv-price-row">
+            <span class="inv-price-usd">$${usd.toLocaleString('en',{maximumFractionDigits:0})}</span>
+            <span class="inv-price-xcg">ƒ ${xcg(usd)}</span>
+          </div>
+        </div>`;
+    }).join('');
+}
+
+function filtrarInvoices(q) {
+    const s = q.toUpperCase();
+    invFiltrados = s ? todosInvoices.filter(i =>
+        i.invoice.toString().includes(s) ||
+        (i.vendor||'').toUpperCase().includes(s) ||
+        (i.fecha||'').includes(s) ||
+        (i.ncarga||'').includes(s)
+    ) : [...todosInvoices];
+    renderInvList();
+}
+
+// ── BÚSQUEDA POR VENDEDOR ─────────────────────────────────────
+function buscarPorVendedor(q) {
+    const s = q.toUpperCase().trim();
+    // Actualizar tags activos
+    document.querySelectorAll('.vtag').forEach(t=>t.classList.toggle('active', t.innerText.toUpperCase().startsWith(s) && s.length>0));
+    if (!s) { modoVendor=false; resetMidPanel(); return; }
+    const facturasVendor = todosInvoices.filter(i=>(i.vendor||'').toUpperCase().includes(s));
+    if (!facturasVendor.length) { resetMidPanel(); return; }
+    modoVendor = true;
+    vendorActivo = q;
+    mostrarInvoicesVendedor(facturasVendor, q);
+}
+
+function clickVendorTag(nombre, display) {
+    const input = document.getElementById('vendor-input');
+    input.value = nombre;
+    buscarPorVendedor(nombre);
+}
+
+let facturasVendorActuales = [];
+
+function mostrarInvoicesVendedor(facturas, vendor) {
+    facturasVendorActuales = facturas;
+    document.getElementById('mid-title').innerText = `🏪 Invoice Selectando Vendedor`;
+    document.getElementById('mid-sub').innerText   = `${vendor} — ${facturas.length} invoices`;
+    document.getElementById('mid-btns').style.display = 'flex';
+    document.getElementById('mid-btns').innerHTML = `
+      <button class="btn-dl btn-dl-pdf" id="btn-vendor-pdf" onclick="descargarVendorPDF()">📄 PDF</button>`;
+    document.getElementById('st-active').innerText = `Vendedor: ${vendor}`;
+
+    const total = facturas.reduce((s,i)=>s+(i.totalExt||0),0);
+    const body = document.getElementById('mid-body');
+    body.innerHTML = `
+    <table class="items-table" style="width:100%;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>INVOICE</th>
+          <th>VENDOR</th>
+          <th>FECHA</th>
+          <th>Q</th>
+          <th>N# CARGA</th>
+          <th>PRICE $</th>
+          <th>TAX</th>
+          <th>TOTAL $</th>
+          <th>TOTAL ƒ</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${facturas.map((inv,idx)=>{
+            const q=trimestre(inv.fecha);
+            const tax=(inv.totalTax||0);
+            const totalFl=xcg(inv.totalExt||0);
+            return `<tr onclick="selInvoice('${inv.invoice}')">
+              <td style="color:#94a3b8;">${idx+1}</td>
+              <td class="badge-item">${inv.invoice}</td>
+              <td style="font-size:10px;font-weight:600;">${inv.vendor||'—'}</td>
+              <td style="font-size:10px;color:#475569;">${inv.fecha||'—'}</td>
+              <td><span class="inv-qtag ${qClass(q)}">${q}</span></td>
+              <td style="font-size:10px;color:#94a3b8;">${inv.ncarga||'—'}</td>
+              <td style="font-weight:700;color:var(--green);">$${(inv.totalExt||0).toLocaleString('en',{maximumFractionDigits:0})}</td>
+              <td style="font-size:10px;color:#64748b;">${tax?'$'+tax.toLocaleString('en',{maximumFractionDigits:0}):''}</td>
+              <td style="font-weight:700;color:var(--green);">$${((inv.totalExt||0)+(tax||0)).toLocaleString('en',{maximumFractionDigits:0})}</td>
+              <td style="font-weight:700;color:var(--purple);">ƒ${totalFl}</td>
+            </tr>`;
+        }).join('')}
+        <tr style="background:#f0fdf4;font-weight:800;">
+          <td colspan="6" style="text-align:right;font-size:11px;color:#475569;">TOTAL ${facturas.length} invoices:</td>
+          <td colspan="2" style="color:var(--green);">$${total.toLocaleString('en',{maximumFractionDigits:0})}</td>
+          <td style="color:var(--green);">$${total.toLocaleString('en',{maximumFractionDigits:0})}</td>
+          <td style="color:var(--purple);">ƒ${xcg(total)}</td>
+        </tr>
+      </tbody>
+    </table>`;
+}
+
+function resetMidPanel() {
+    document.getElementById('mid-title').innerText = '📦 Selecciona un Invoice';
+    document.getElementById('mid-sub').innerText   = 'Haz click en un invoice para ver sus ítems';
+    document.getElementById('mid-body').innerHTML  = '<div class="no-data"><div class="icon">👈</div>Selecciona un invoice</div>';
+    document.getElementById('st-active').innerText = '';
+    document.getElementById('inv-header-area').innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:11px;background:#f8fafc;">Selecciona un invoice</div>';
+    document.getElementById('item-detail').innerHTML = '<div class="no-data"><div class="icon">📦</div>Selecciona un ítem</div>';
+}
+
+// ── SELECCIONAR INVOICE ───────────────────────────────────────
+async function selInvoice(invNum) {
+    invoiceActivo = invNum;
+    modoVendor = false;
+    document.getElementById('vendor-input').value = '';
+    document.querySelectorAll('.vtag').forEach(t=>t.classList.remove('active'));
+    renderInvList();
+    document.getElementById('mid-title').innerText = `📋 Invoice #${invNum}`;
+    document.getElementById('mid-sub').innerText   = 'Cargando…';
+    document.getElementById('mid-body').innerHTML  = '<div class="no-data"><div class="icon">⏳</div>Cargando…</div>';
+    document.getElementById('item-detail').innerHTML = '<div class="no-data"><div class="icon">📦</div>Selecciona un ítem</div>';
+    document.getElementById('st-active').innerText = `Invoice: ${invNum}`;
+
+    try {
+        const r = await fetch(`/api/invoices-items/${encodeURIComponent(invNum)}`);
+        const d = await r.json();
+        if (!d.loaded) { document.getElementById('mid-body').innerHTML='<div class="no-data">Sin datos</div>'; return; }
+        itemsActuales  = d.items;
+        itemsFiltrados = [...itemsActuales];
+        document.getElementById('mid-sub').innerText = `${d.items.length} ítems`;
+        document.getElementById('mid-btns').style.display = 'flex';
+        document.getElementById('mid-btns').innerHTML = `
+          <button class="btn-dl btn-dl-pdf" id="btn-inv-pdf" onclick="descargarInvoicePDF()">📄 PDF</button>
+          <button class="btn-dl btn-dl-csv" onclick="descargarInvoiceCSV()">📊 CSV</button>`;
+        renderInvHeader(d.invoice);
+        renderItemsTable();
+        // cargar fotos en segundo plano
+        cargarFotosTabla();
+    } catch(e) {
+        document.getElementById('mid-body').innerHTML=`<div class="no-data"><div class="icon">❌</div>${e.message}</div>`;
+    }
+}
+
+function renderInvHeader(inv) {
+    if (!inv||!inv.invoice) return;
+    const q = trimestre(inv.fecha);
+    const usd = inv.totalExt||0;
+    const qColors = {Q1:'#dbeafe,#1e40af',Q2:'#dcfce7,#166534',Q3:'#fef3c7,#92400e',Q4:'#fce7f3,#be185d'};
+    const [qBg,qFg] = (qColors[q]||'#f1f5f9,#475569').split(',');
+    document.getElementById('inv-header-area').innerHTML = `
+    <div class="inv-header-card">
+      <div class="inv-hdr-row">
+        <div>
+          <div class="inv-hdr-vendor">${inv.vendor||'—'}</div>
+          <div class="inv-hdr-num">#${inv.invoice}</div>
+          <div class="inv-hdr-meta">${inv.fecha||'—'} &nbsp;·&nbsp; N# ${inv.ncarga||'—'}</div>
+        </div>
+        ${q?`<div class="inv-qtag-big" style="background:${qBg};color:${qFg};">${q}</div>`:''}
+      </div>
+    </div>
+    <div class="inv-stats-grid">
+      <div class="inv-stat"><div class="n" style="color:var(--green);">$${usd.toLocaleString('en',{maximumFractionDigits:0})}</div><div class="l">Total $</div></div>
+      <div class="inv-stat"><div class="n" style="color:var(--purple);">ƒ${xcg(usd)}</div><div class="l">Total ƒ</div></div>
+      <div class="inv-stat"><div class="n">${inv.totalItems||0}</div><div class="l">Ítems</div></div>
+      <div class="inv-stat"><div class="n" style="color:var(--orange);">${inv.duty||'—'}</div><div class="l">Duty</div></div>
+    </div>`;
+}
+
+// ── TABLA DE ÍTEMS (con foto) ─────────────────────────────────
+function renderItemsTable() {
+    const body = document.getElementById('mid-body');
+    if (!itemsFiltrados.length) { body.innerHTML='<div class="no-data"><div class="icon">🔍</div>Sin resultados</div>'; return; }
+    body.innerHTML = `
+    <div class="items-table-wrap">
+    <table class="items-table">
+      <thead><tr>
+        <th>FOTO</th><th>ITEM</th><th>DESCRIPCIÓN</th>
+        <th>SHIP</th><th>CTRL</th><th>PRECIO</th><th>EXT.$</th><th>CAT.</th>
+      </tr></thead>
+      <tbody>
+        ${itemsFiltrados.map((it,idx)=>`
+        <tr class="${itemActivo===it.item?'active':''}" onclick="selItem('${it.item}')">
+          <td><div class="foto-cell-empty" id="foto-mid-${it.item}">📦</div></td>
+          <td class="badge-item">${it.item}</td>
+          <td style="max-width:170px;"><div style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.longDesc||it.shortDesc||'—'}</div></td>
+          <td class="ship-ctrl" style="color:var(--primary);">${it.ship||'—'}</td>
+          <td class="ship-ctrl" style="color:${it.control&&it.ship&&it.control<it.ship?'var(--red)':'var(--green)'};">${it.control||'—'}</td>
+          <td style="font-weight:700;color:var(--green);white-space:nowrap;">${it.price||'—'}</td>
+          <td style="font-size:10px;color:#64748b;">$${(it.extPrice||0).toLocaleString('en',{maximumFractionDigits:0})}</td>
+          <td><span class="badge-cat">${it.cat||'—'}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+async function cargarFotosTabla() {
+    for (const it of itemsFiltrados) {
+        await cargarFotoMid(it.item);
+    }
+}
+
+async function cargarFotoMid(itemCode) {
+    if (photoCache[itemCode]!==undefined) {
+        const el=document.getElementById('foto-mid-'+itemCode);
+        if(el && photoCache[itemCode]) el.outerHTML=`<img class="foto-cell" src="${photoCache[itemCode]}" alt="${itemCode}">`;
+        return;
+    }
+    const el=document.getElementById('foto-mid-'+itemCode);
+    if(!el) return;
+    try {
+        const r=await fetch(`/api/foto/${encodeURIComponent(itemCode)}`);
+        const d=await r.json();
+        if(d.found){photoCache[itemCode]=d.url;el.outerHTML=`<img class="foto-cell" src="${d.url}" alt="${itemCode}">`;}
+        else photoCache[itemCode]=false;
+    } catch(e){}
+}
+
+function filtrarMid(q) {
+    if (modoVendor) return; // en modo vendor no filtramos items
+    const s=q.toUpperCase();
+    itemsFiltrados = s ? itemsActuales.filter(i=>
+        i.item.toString().includes(s)||(i.longDesc||'').toUpperCase().includes(s)||(i.cat||'').toUpperCase().includes(s)
+    ) : [...itemsActuales];
+    renderItemsTable();
+    cargarFotosTabla();
+}
+
+// ── DETALLE DEL ÍTEM ──────────────────────────────────────────
+async function selItem(itemCode) {
+    itemActivo = itemCode;
+    renderItemsTable();
+    cargarFotosTabla();
+    const it = itemsActuales.find(i=>i.item==itemCode);
+    if (!it) return;
+    const detail = document.getElementById('item-detail');
+    detail.innerHTML='<div class="no-data"><div class="icon">⏳</div></div>';
+
+    // Foto grande
+    if (photoCache[itemCode]===undefined) {
+        try {
+            const r=await fetch(`/api/foto/${encodeURIComponent(itemCode)}`);
+            const d=await r.json();
+            photoCache[itemCode]=d.found?d.url:false;
+        } catch(e){photoCache[itemCode]=false;}
+    }
+    const fotoHtml = photoCache[itemCode]
+        ? `<img src="${photoCache[itemCode]}?t=${Date.now()}" alt="${itemCode}">`
+        : '<div style="font-size:50px;color:#cbd5e1;">📦</div>';
+
+    const margen=it.margen;
+    const margenColor=margen===null?'#94a3b8':margen>=30?'var(--green)':margen>=15?'var(--orange)':'var(--red)';
+    const extEst=(parseFloat((it.price||'0').replace(/[$,]/g,''))||0)*(it.ship||0);
+
+    detail.innerHTML=`
+    <div class="item-foto-lg">${fotoHtml}</div>
+    <div class="item-title">${itemCode}</div>
+    <div class="item-sub">${it.longDesc||it.shortDesc||'—'} ${it.cat?`<span class="badge-cat">${it.cat}</span>`:''}</div>
+    <div class="detail-grid">
+      <div class="dc"><div class="l">Esperado (SHIP)</div><div class="v" style="color:var(--primary);">${it.ship||'—'}</div></div>
+      <div class="dc"><div class="l">Recibido (CTRL)</div><div class="v" style="color:${it.control&&it.ship&&it.control<it.ship?'var(--red)':'var(--green)'};">${it.control||'—'}</div></div>
+      <div class="dc"><div class="l">Precio Compra</div><div class="v" style="color:var(--green);">${it.price||'—'}</div></div>
+      <div class="dc"><div class="l">Precio Venta</div><div class="v" style="color:var(--orange);">${it.priceSold?'ƒ'+it.priceSold.toFixed(2):'—'}</div></div>
+      <div class="dc"><div class="l">Stock Actual</div><div class="v">${it.qtyCurrent!==null?it.qtyCurrent:'—'}</div></div>
+      <div class="dc"><div class="l">Vendido 3m</div><div class="v" style="color:var(--purple);">${it.vendido3m||0}</div></div>
+    </div>
+    ${margen!==null?`<div class="dc" style="margin-bottom:10px;"><div class="l">Margen</div><div class="v" style="color:${margenColor};">${margen}%</div><div class="margen-bar"><div class="margen-fill" style="width:${Math.min(Math.max(margen,0),100)}%;background:${margenColor};"></div></div></div>`:''}
+    <div style="border:1px solid var(--border);border-radius:7px;overflow:hidden;">
+      <div style="background:#f8fafc;padding:6px 11px;font-size:9px;font-weight:800;color:#64748b;text-transform:uppercase;border-bottom:1px solid var(--border);">Detalles del Invoice</div>
+      <div style="padding:2px 0;">
+        <div class="detail-row" style="padding:6px 11px;"><span class="dr-l">Pág. Invoice</span><span class="dr-v">${it.pagina||'—'}</span></div>
+        <div class="detail-row" style="padding:6px 11px;"><span class="dr-l">Duty</span><span class="dr-v">${it.duty||'—'}</span></div>
+        <div class="detail-row" style="padding:6px 11px;"><span class="dr-l">Ext. Precio</span><span class="dr-v" style="color:var(--green);">$${extEst.toLocaleString('en',{minimumFractionDigits:2})}</span></div>
+        <div class="detail-row" style="padding:6px 11px;"><span class="dr-l">Última Venta</span><span class="dr-v">${it.lastSold||'—'}</span></div>
+        <div class="detail-row" style="padding:6px 11px;"><span class="dr-l">Short Desc</span><span class="dr-v" style="font-size:10px;">${it.shortDesc||'—'}</span></div>
+      </div>
+    </div>`;
+}
+// ── DESCARGA CSV DEL INVOICE ──────────────────────────────────
+function descargarInvoiceCSV() {
+    if (!itemsActuales.length) return;
+    let csv = 'ITEM,SHORT_DESC,DESCRIPCION,CAT,SHIP,CONTROL,UNIT_PRICE,EXT_PRICE,PAGINA,DUTY,STOCK_ACTUAL,PRECIO_VENTA,VENDIDO_3M,ULTIMA_VENTA,MARGEN\n';
+    itemsActuales.forEach(it => {
+        csv += `"${it.item}","${(it.shortDesc||'').replace(/"/g,'""')}","${(it.longDesc||'').replace(/"/g,'""')}","${it.cat||''}",${it.ship||0},${it.control||0},"${it.price||''}",${(it.extPrice||0).toFixed(2)},"${it.pagina||''}","${it.duty||''}",${it.qtyCurrent??''},"${it.priceSold??''}",${it.vendido3m||0},"${it.lastSold||''}","${it.margen??''}"\n`;
+    });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+    a.download = `Invoice_${invoiceActivo}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+}
+
+// ── DESCARGA PDF DEL INVOICE (con fotos) ─────────────────────
+async function descargarInvoicePDF() {
+    if (!itemsActuales.length) return;
+    const btn = document.getElementById('btn-inv-pdf');
+    btn.innerHTML = '⏳'; btn.disabled = true;
+
+    // Cargar fotos que no estén en cache
+    for (const it of itemsActuales) {
+        if (photoCache[it.item] === undefined) {
+            try {
+                const r = await fetch(`/api/foto/${encodeURIComponent(it.item)}`);
+                const d = await r.json();
+                photoCache[it.item] = d.found ? d.url : false;
+            } catch(e) { photoCache[it.item] = false; }
+        }
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l','mm','a4');
+    const PW=297, M=10;
+
+    // Encabezado
+    const inv = itemsActuales[0];
+    const invMeta = { vendor: inv ? '' : '' };
+    // Obtener vendor desde la lista
+    const invData = todosInvoices.find(i=>i.invoice===invoiceActivo)||{};
+    const q = trimestre(invData.fecha||'');
+    const qColors = {Q1:'#1e40af',Q2:'#166534',Q3:'#92400e',Q4:'#be185d'};
+
+    doc.setFillColor(30,64,175); doc.rect(0,0,PW,16,'F');
+    doc.setTextColor(255,255,255); doc.setFontSize(12); doc.setFont('helvetica','bold');
+    doc.text(`Invoice #${invoiceActivo}`, M, 7);
+    doc.setFontSize(8);
+    doc.text(`${invData.vendor||''} · ${invData.fecha||''} · N# ${invData.ncarga||''} · ${q}`, M, 13);
+    const usd = invData.totalExt||0;
+    doc.text(`$${usd.toLocaleString('en',{maximumFractionDigits:0})} · ƒ${xcg(usd)}`, PW-M, 10, {align:'right'});
+    doc.setTextColor(30,41,59);
+
+    // Tabla
+    const rows = itemsActuales;
+    doc.autoTable({
+        head: [['FOTO','ITEM','DESCRIPCIÓN','CAT.','SHIP','CTRL','PRECIO','EXT.$','PÁG.','DUTY','STOCK','V.SOLD','MARGEN']],
+        body: rows.map(it => ['', it.item, (it.longDesc||it.shortDesc||'').substring(0,32), it.cat||'', it.ship||'—', it.control||'—', it.price||'—', '$'+(it.extPrice||0).toFixed(0), it.pagina||'', it.duty||'', it.qtyCurrent??'', it.vendido3m||0, it.margen!==null?it.margen+'%':'']),
+        startY: 19,
+        styles: { fontSize: 7, cellPadding: 2.5 },
+        headStyles: { fillColor: [30,64,175], fontSize: 6.5, fontStyle:'bold' },
+        columnStyles: {
+            0: { cellWidth: 13 },
+            4: { halign:'center' },
+            5: { halign:'center' },
+            7: { textColor:[5,150,105], fontStyle:'bold' },
+            12:{ fillColor:[220,252,231] }
+        },
+        didDrawCell: (d) => {
+            if (d.section==='body' && d.column.index===0) {
+                const it = rows[d.row.index];
+                const url = it && photoCache[it.item];
+                if (url) {
+                    fotoToBase64(url).then(b64=>{
+                        if(b64) try{ doc.addImage(b64,'JPEG',d.cell.x+0.5,d.cell.y+0.5,d.cell.width-1,d.cell.height-1); }catch(e){}
+                    });
+                }
+            }
+        },
+        didParseCell: (d) => {
+            if (d.section==='body' && d.column.index===5) {
+                const it = rows[d.row.index];
+                if (it && it.control && it.ship && it.control < it.ship)
+                    d.cell.styles.textColor = [239,68,68];
+            }
+        }
+    });
+
+    // Esperar que las imágenes se dibujen (hack: guardar primero sin imgs, luego con imgs)
+    // Alternativa: pre-convertir todas
+    const b64Map = {};
+    for (const it of rows) {
+        if (photoCache[it.item]) {
+            const b64 = await fotoToBase64(photoCache[it.item]);
+            if (b64) b64Map[it.item] = b64;
+        }
+    }
+
+    // Regenerar con fotos precargadas
+    const doc2 = new jsPDF('l','mm','a4');
+    doc2.setFillColor(30,64,175); doc2.rect(0,0,PW,16,'F');
+    doc2.setTextColor(255,255,255); doc2.setFontSize(12); doc2.setFont('helvetica','bold');
+    doc2.text(`Invoice #${invoiceActivo}`, M, 7);
+    doc2.setFontSize(8);
+    doc2.text(`${invData.vendor||''} · ${invData.fecha||''} · N# ${invData.ncarga||''} · ${q}`, M, 13);
+    doc2.text(`$${usd.toLocaleString('en',{maximumFractionDigits:0})} · ƒ${xcg(usd)} · ${rows.length} ítems`, PW-M, 10, {align:'right'});
+    doc2.setTextColor(30,41,59);
+
+    doc2.autoTable({
+        head: [['FOTO','ITEM','DESCRIPCIÓN','CAT.','SHIP','CTRL','PRECIO','EXT.$','PÁG.','DUTY','STOCK','V.SOLD','MARGEN']],
+        body: rows.map(it => ['', it.item, (it.longDesc||it.shortDesc||'').substring(0,32), it.cat||'', it.ship||'—', it.control||'—', it.price||'—', '$'+(it.extPrice||0).toFixed(0), it.pagina||'', it.duty||'', it.qtyCurrent??'', it.vendido3m||0, it.margen!==null?it.margen+'%':'']),
+        startY: 19,
+        styles: { fontSize: 7, cellPadding: 2.5 },
+        headStyles: { fillColor: [30,64,175], fontSize:6.5, fontStyle:'bold' },
+        columnStyles: { 0:{cellWidth:13}, 4:{halign:'center'}, 5:{halign:'center'}, 7:{textColor:[5,150,105],fontStyle:'bold'}, 12:{fillColor:[220,252,231]} },
+        didDrawCell: (d) => {
+            if (d.section==='body' && d.column.index===0) {
+                const it = rows[d.row.index];
+                const b64 = it && b64Map[it.item];
+                if (b64) try{ doc2.addImage(b64,'JPEG',d.cell.x+0.5,d.cell.y+0.5,d.cell.width-1,d.cell.height-1); }catch(e){}
+            }
+        },
+        didParseCell: (d) => {
+            if (d.section==='body' && d.column.index===5) {
+                const it = rows[d.row.index];
+                if (it && it.control && it.ship && it.control < it.ship)
+                    d.cell.styles.textColor = [239,68,68];
+            }
+        }
+    });
+
+    const pages2 = doc2.getNumberOfPages();
+    for(let p=1;p<=pages2;p++){ doc2.setPage(p); doc2.setFontSize(6.5); doc2.setTextColor(148,163,184); doc2.setFont('helvetica','normal'); doc2.text(`BetterDeals Logistics Pro · Pág ${p}/${pages2} · ${new Date().toLocaleString()}`,PW/2,205,{align:'center'}); }
+    doc2.save(`Invoice_${invoiceActivo}_${new Date().toISOString().split('T')[0]}.pdf`);
+    btn.innerHTML = '📄 PDF'; btn.disabled = false;
+}
+
+// ── DESCARGA PDF DEL VENDEDOR ─────────────────────────────────
+function descargarVendorPDF() {
+    if (!facturasVendorActuales.length) return;
+    const btn = document.getElementById('btn-vendor-pdf');
+    btn.innerHTML = '⏳'; btn.disabled = true;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l','mm','a4');
+    const PW=297, M=12;
+    const vendor = vendorActivo || facturasVendorActuales[0]?.vendor || '';
+    const total  = facturasVendorActuales.reduce((s,i)=>s+(i.totalExt||0),0);
+
+    doc.setFillColor(30,64,175); doc.rect(0,0,PW,16,'F');
+    doc.setTextColor(255,255,255); doc.setFontSize(12); doc.setFont('helvetica','bold');
+    doc.text(`Invoice Selectando Vendedor — ${vendor}`, M, 7);
+    doc.setFontSize(8);
+    doc.text(`${facturasVendorActuales.length} invoices · Total: $${total.toLocaleString('en',{maximumFractionDigits:0})} · ƒ${xcg(total)}`, M, 13);
+    doc.text(new Date().toLocaleString(), PW-M, 10, {align:'right'});
+    doc.setTextColor(30,41,59);
+
+    const rows = facturasVendorActuales;
+    doc.autoTable({
+        head: [['#','INVOICE','VENDOR','FECHA','Q','N# CARGA','PRICE $','TOTAL ƒ','ÍTEMS']],
+        body: rows.map((inv,i) => {
+            const q = trimestre(inv.fecha||'');
+            return [i+1, inv.invoice, inv.vendor||'—', inv.fecha||'—', q, inv.ncarga||'—', '$'+(inv.totalExt||0).toLocaleString('en',{maximumFractionDigits:0}), 'ƒ'+xcg(inv.totalExt||0), inv.totalItems||0];
+        }),
+        foot: [['','','','','','TOTAL:','$'+total.toLocaleString('en',{maximumFractionDigits:0}), 'ƒ'+xcg(total), '']],
+        startY: 19,
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [30,64,175], fontStyle:'bold' },
+        footStyles: { fillColor: [220,252,231], fontStyle:'bold', textColor:[5,150,105] },
+        columnStyles: {
+            0: { halign:'center', cellWidth:8 },
+            1: { fontStyle:'bold', textColor:[30,64,175] },
+            6: { textColor:[5,150,105], fontStyle:'bold' },
+            7: { textColor:[124,58,237], fontStyle:'bold' },
+        },
+        didParseCell: (d) => {
+            if (d.section==='body' && d.column.index===4) {
+                const qc = {'Q1':[219,234,254],'Q2':[220,252,231],'Q3':[254,243,199],'Q4':[252,231,243]};
+                const bg = qc[d.cell.text[0]];
+                if (bg) d.cell.styles.fillColor = bg;
+            }
+        }
+    });
+
+    const pages = doc.getNumberOfPages();
+    for(let p=1;p<=pages;p++){ doc.setPage(p); doc.setFontSize(6.5); doc.setTextColor(148,163,184); doc.setFont('helvetica','normal'); doc.text(`BetterDeals Logistics Pro · Pág ${p}/${pages}`,PW/2,205,{align:'center'}); }
+    doc.save(`Vendor_${vendor.replace(/\s/g,'_')}_${new Date().toISOString().split('T')[0]}.pdf`);
+    btn.innerHTML = '📄 PDF'; btn.disabled = false;
+}
+
+// ── HELPER FOTO BASE64 ────────────────────────────────────────
+function fotoToBase64(url) {
+    return new Promise(resolve => {
+        const img = new Image(); img.crossOrigin='anonymous';
+        img.onload = () => { const c=document.createElement('canvas'); c.width=img.naturalWidth; c.height=img.naturalHeight; c.getContext('2d').drawImage(img,0,0); try{resolve(c.toDataURL('image/jpeg',0.85));}catch(e){resolve(null);} };
+        img.onerror = ()=>resolve(null);
+        img.src = url+'?t='+Date.now();
+    });
+}
+</script>
+</body>
+</html>

@@ -104,8 +104,6 @@
     let itemsEntrada = JSON.parse(localStorage.getItem('entrada_data')) || [];
     const sInput = document.getElementById('search-input');
     const sugBox = document.getElementById('sug-box');
-
-    // ── AUTO-SYNC ──
     const DEV_ID = 'e-' + Math.random().toString(36).substr(2,6);
     let sseConn = null, pushTimer = null;
 
@@ -113,6 +111,8 @@
         if (sseConn) return;
         sseConn = new EventSource('/api/sync/stream/entrada');
         sseConn.onmessage = (e) => {
+            // No sobrescribir si el usuario está interactuando con la tabla
+            if (document.activeElement.tagName === 'INPUT') return;
             try {
                 const d = JSON.parse(e.data);
                 if (!d.items || d.deviceId === DEV_ID) return;
@@ -135,14 +135,22 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ items: itemsEntrada, deviceId: DEV_ID })
             }).catch(() => {});
-        }, 300);
+        }, 500);
     }
 
     window.onload = () => { renderTable(); conectarSync(); };
 
     function guardarLocal() {
         localStorage.setItem('entrada_data', JSON.stringify(itemsEntrada));
+        actualizarContadores();
         pushSync();
+    }
+
+    function actualizarContadores() {
+        document.getElementById('count-total').innerText = itemsEntrada.length;
+        document.getElementById('count-checked').innerText = itemsEntrada.filter(x => x.checked).length;
+        document.getElementById('count-pending').innerText = itemsEntrada.filter(x => !x.checked).length;
+        document.getElementById('btn-confirm-final').style.display = itemsEntrada.length > 0 ? 'block' : 'none';
     }
 
     function limpiarLista() {
@@ -150,50 +158,47 @@
             itemsEntrada = [];
             localStorage.removeItem('entrada_data');
             renderTable();
+            pushSync();
         }
     }
 
     sInput.addEventListener('input', async () => {
         const q = sInput.value.trim();
         if (q.length < 2) { sugBox.style.display = 'none'; return; }
-        try {
-            const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
-            const data = await res.json();
-            sugBox.innerHTML = '';
-            data.forEach(i => {
-                const div = document.createElement('div');
-                div.className = 's-item';
-                div.innerHTML = `<b>${i.ITEM}</b> - ${i.Description} <span style="float:right; color:var(--primary)">Stock: ${i.STOCK}</span>`;
-                div.onclick = () => { buscarYAgregar(i.ITEM, 0, "", false); sInput.value = ''; sugBox.style.display='none'; };
-                sugBox.appendChild(div);
-            });
-            sugBox.style.display = 'block';
-        } catch (e) { console.error("Error buscando:", e); }
+        const res = await fetch(`/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        sugBox.innerHTML = '';
+        data.forEach(i => {
+            const div = document.createElement('div');
+            div.className = 's-item';
+            div.innerHTML = `<b>${i.ITEM}</b> - ${i.Description} <span style="float:right; color:var(--primary)">Stock: ${i.STOCK}</span>`;
+            div.onclick = () => { buscarYAgregar(i.ITEM, 0, "", false); sInput.value = ''; sugBox.style.display='none'; };
+            sugBox.appendChild(div);
+        });
+        sugBox.style.display = 'block';
     });
 
     document.addEventListener('click', e => { if (!e.target.closest('.search-area')) sugBox.style.display = 'none'; });
 
     async function buscarYAgregar(codigo, cantidad, locSugerida, esCSV) {
         if(itemsEntrada.find(x => x.item === codigo)) return;
-        try {
-            const res = await fetch(`/search?q=${encodeURIComponent(codigo)}`);
-            const data = await res.json();
-            const info = data.find(x => x.ITEM.toString().trim() === codigo.toString().trim());
-            if (info) {
-                itemsEntrada.push({
-                    item: info.ITEM,
-                    desc: info.Description,
-                    shortDesc: info['short desc'] || '',
-                    loc: locSugerida || info.loc || info.location || "",
-                    stockActual: parseInt(info.STOCK.toString().replace(/[^0-9.-]/g, "")) || 0,
-                    mc_val: parseInt(info.MC) || 0,
-                    cant_a_sumar: cantidad,
-                    checked: false
-                });
-                guardarLocal();
-                if(!esCSV) renderTable();
-            }
-        } catch (e) { console.error("Error agregando:", e); }
+        const res = await fetch(`/search?q=${encodeURIComponent(codigo)}`);
+        const data = await res.json();
+        const info = data.find(x => x.ITEM.toString().trim() === codigo.toString().trim());
+        if (info) {
+            itemsEntrada.push({
+                item: info.ITEM,
+                desc: info.Description,
+                shortDesc: info['short desc'] || '',
+                loc: locSugerida || info.loc || info.location || "",
+                stockActual: parseInt(info.STOCK.toString().replace(/[^0-9.-]/g, "")) || 0,
+                mc_val: parseInt(info.MC) || 0,
+                cant_a_sumar: cantidad,
+                checked: false
+            });
+            guardarLocal();
+            if(!esCSV) renderTable();
+        }
     }
 
     function procesarCSV(input) {
@@ -216,17 +221,14 @@
         reader.readAsText(file);
     }
 
-    // Cache de fotos: item → url (string) | false (sin foto) | undefined (no consultado)
     const photoCache = {};
-
     function fotoHtml(item) {
-        if (photoCache[item])        return `<img class="foto-thumb" src="${photoCache[item]}" alt="${item}">`;
+        if (photoCache[item]) return `<img class="foto-thumb" src="${photoCache[item]}" alt="${item}">`;
         if (photoCache[item] === false) return `<div class="foto-empty">📦</div>`;
         return `<div class="foto-empty" id="foto-e-${item}">📦</div>`;
     }
 
     function renderTable() {
-        // Ordenar siempre por locación (vacíos al final)
         itemsEntrada.sort((a, b) => {
             const la = (a.loc || '').toUpperCase();
             const lb = (b.loc || '').toUpperCase();
@@ -240,39 +242,62 @@
         itemsEntrada.forEach((it, idx) => {
             const stockFinal = it.stockActual + it.cant_a_sumar;
             const mc = it.mc_val || 0;
-            let cajas = 0, bn1_proyectado = stockFinal;
+            let cajas = 0, bn1 = stockFinal;
             if (mc > 0) {
                 let llenas = Math.floor(stockFinal / mc);
-                bn1_proyectado = stockFinal % mc;
-                cajas = bn1_proyectado > 0 ? llenas + 1 : llenas;
+                bn1 = stockFinal % mc;
+                cajas = bn1 > 0 ? llenas + 1 : llenas;
             }
             body.innerHTML += `
-                <tr style="${it.checked ? 'background:#f0fdf4':''}">
-                    <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="itemsEntrada[${idx}].checked=this.checked; guardarLocal(); renderTable()"></td>
+                <tr id="tr-${idx}" style="${it.checked ? 'background:#f0fdf4':''}">
+                    <td><input type="checkbox" ${it.checked ? 'checked':''} onchange="actualizarDato(${idx}, 'checked', this.checked)"></td>
                     <td>${fotoHtml(it.item)}</td>
                     <td><b>${it.item}</b></td>
                     <td><span style="font-size:13px; font-weight:600; color:#1e293b;">${it.desc}</span>${it.shortDesc ? `<div style="font-size:11px; color:#64748b; margin-top:2px;">${it.shortDesc}</div>` : ''}</td>
-                    <td><input type="text" class="loc-input" value="${it.loc}" onchange="itemsEntrada[${idx}].loc=this.value.toUpperCase(); guardarLocal()"></td>
+                    <td><input type="text" class="loc-input" value="${it.loc}" onchange="actualizarDato(${idx}, 'loc', this.value.toUpperCase())"></td>
                     <td style="color:#64748b; font-weight:bold;">${it.stockActual}</td>
-                    <td><input type="number" class="input-qty input-mc" value="${it.mc_val}" onchange="itemsEntrada[${idx}].mc_val=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
-                    <td style="text-align:center; font-weight:800; color:var(--primary); font-size:16px;">${cajas}</td>
-                    <td style="text-align:center; font-weight:800; color:var(--accent); font-size:16px;">${bn1_proyectado}</td>
-                    <td><input type="number" class="input-qty" style="border-color:var(--primary)" value="${it.cant_a_sumar}" onchange="itemsEntrada[${idx}].cant_a_sumar=parseInt(this.value)||0; guardarLocal(); renderTable()"></td>
-                    <td><span class="stock-new">${stockFinal}</span></td>
-                    <td><button class="btn-del" onclick="itemsEntrada.splice(${idx},1); guardarLocal(); renderTable()">✕</button></td>
+                    <td><input type="number" class="input-qty input-mc" value="${it.mc_val}" onchange="actualizarDato(${idx}, 'mc_val', parseInt(this.value)||0)"></td>
+                    <td id="cajas-${idx}" style="text-align:center; font-weight:800; color:var(--primary); font-size:16px;">${cajas}</td>
+                    <td id="bn1-${idx}" style="text-align:center; font-weight:800; color:var(--accent); font-size:16px;">${bn1}</td>
+                    <td><input type="number" class="input-qty" style="border-color:var(--primary)" value="${it.cant_a_sumar}" onchange="actualizarDato(${idx}, 'cant_a_sumar', parseInt(this.value)||0)"></td>
+                    <td><span id="final-${idx}" class="stock-new">${stockFinal}</span></td>
+                    <td><button class="btn-del" onclick="eliminarFila(${idx})">✕</button></td>
                 </tr>`;
         });
-        document.getElementById('count-total').innerText   = itemsEntrada.length;
-        document.getElementById('count-checked').innerText  = itemsEntrada.filter(x => x.checked).length;
-        document.getElementById('count-pending').innerText  = itemsEntrada.filter(x => !x.checked).length;
-        document.getElementById('btn-confirm-final').style.display = itemsEntrada.length > 0 ? 'block' : 'none';
-        guardarLocal();
+        actualizarContadores();
         cargarFotosTabla();
+    }
+
+    function actualizarDato(idx, campo, valor) {
+        itemsEntrada[idx][campo] = valor;
+        const it = itemsEntrada[idx];
+        const stockFinal = it.stockActual + it.cant_a_sumar;
+        const mc = it.mc_val || 0;
+        let cajas = 0, bn1 = stockFinal;
+        if (mc > 0) {
+            let llenas = Math.floor(stockFinal / mc);
+            bn1 = stockFinal % mc;
+            cajas = bn1 > 0 ? llenas + 1 : llenas;
+        }
+        // Actualización puntual del DOM para no perder el foco
+        if(document.getElementById(`cajas-${idx}`)) {
+            document.getElementById(`cajas-${idx}`).innerText = cajas;
+            document.getElementById(`bn1-${idx}`).innerText = bn1;
+            document.getElementById(`final-${idx}`).innerText = stockFinal;
+            document.getElementById(`tr-${idx}`).style.background = it.checked ? '#f0fdf4' : '';
+        }
+        guardarLocal();
+    }
+
+    function eliminarFila(idx) {
+        itemsEntrada.splice(idx, 1);
+        renderTable();
+        guardarLocal();
     }
 
     async function cargarFotosTabla() {
         for (const it of itemsEntrada) {
-            if (photoCache[it.item] !== undefined) continue; // ya sabemos el resultado
+            if (photoCache[it.item] !== undefined) continue;
             const el = document.getElementById('foto-e-' + it.item);
             if (!el) continue;
             try {
@@ -308,7 +333,8 @@
                 alert("✅ ¡ÉXITO! Inventario actualizado correctamente.");
                 itemsEntrada = [];
                 localStorage.removeItem('entrada_data');
-                renderTable();
+                renderTable(); // Limpia la tabla visualmente
+                pushSync();    // Notifica la limpieza al servidor
             } else {
                 alert("❌ Error: " + (result.error || "No se pudo actualizar."));
             }
